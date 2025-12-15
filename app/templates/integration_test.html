@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h4 mb-0">Тест интеграционного эндпоинта</h1>
+  <a class="btn btn-outline-secondary" href="/ui/prompts">Назад</a>
+</div>
+
+<div class="alert alert-info">
+  Этот тест отправляет запрос в <code>POST /api/v1/puzzlebot/ai</code> (тот же endpoint, что используется при интеграции),
+  затем подтягивает результат из <code>request_logs</code> по <code>request_id</code>.
+</div>
+
+{% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Request JSON</div>
+        <form method="post" action="/ui/integration-test">
+          <textarea class="form-control" name="request_json" rows="16">{{ request_json }}</textarea>
+          <div class="form-text">
+            Рекомендуемый формат: <code>{"prompt":"...","chat_id":123,"bot_api_key":"..."}</code>
+          </div>
+          <button class="btn btn-primary mt-3" type="submit">Отправить</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Accepted response</div>
+        <pre class="mb-0"><code>{{ accepted | tojson(indent=2) if accepted else "" }}</code></pre>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Log (request_logs)</div>
+        {% if log %}
+          <div class="small text-muted mb-2">
+            request_id: <code>{{ log.request_id }}</code>
+          </div>
+          <div class="mb-2"><span class="text-muted">LLM ok:</span> <code>{{ log.llm_ok }}</code></div>
+          {% if log.llm_error %}
+            <div class="alert alert-danger"><pre class="mb-0"><code>{{ log.llm_error }}</code></pre></div>
+          {% endif %}
+          <div class="mb-2"><span class="text-muted">Telegram ok:</span> <code>{{ log.telegram_ok }}</code></div>
+          {% if log.telegram_error %}
+            <div class="alert alert-warning"><pre class="mb-0"><code>{{ log.telegram_error }}</code></pre></div>
+          {% endif %}
+          <div class="text-muted small mb-2">LLM response:</div>
+          <pre class="mb-0"><code>{{ log.llm_response_text or "" }}</code></pre>
+        {% else %}
+          <div class="text-muted">Лог пока не появился (если вы отправляете в Telegram — проверьте токен/чат).</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+

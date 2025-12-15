@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h4 mb-0">LLM диагностика</h1>
+  <a class="btn btn-outline-secondary" href="/ui/prompts">Назад</a>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="mb-2"><span class="text-muted">URL:</span> <code>{{ url }}</code></div>
+    {% if error %}
+      <div class="alert alert-danger mb-0">{{ error }}</div>
+    {% else %}
+      <div class="mb-2"><span class="text-muted">HTTP status:</span> <code>{{ status }}</code></div>
+      <div class="text-muted small mb-2">Body (snippet):</div>
+      <pre class="mb-0"><code>{{ body_snippet or "" }}</code></pre>
+    {% endif %}
+  </div>
+</div>
+
+<div class="alert alert-info mt-3">
+  Если видите <code>403 unauthorized_access</code>, значит <code>LLM_API_KEY</code> не является валидным Bearer-токеном доступа.
+</div>
+{% endblock %}
+
+

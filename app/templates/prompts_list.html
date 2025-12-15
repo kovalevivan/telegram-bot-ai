@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h4 mb-0">Промты</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="/ui/llm">LLM</a>
+    <a class="btn btn-outline-secondary" href="/ui/integration-test">API test</a>
+    <a class="btn btn-primary" href="/ui/prompts/new">Новый промт</a>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-striped mb-0 align-middle">
+      <thead>
+        <tr>
+          <th>slug (prompt_id)</th>
+          <th>Название</th>
+          <th>Модель</th>
+          <th class="text-end">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in prompts %}
+          <tr>
+            <td><code>{{ p.slug }}</code></td>
+            <td>{{ p.name }}</td>
+            <td><code>{{ p.model }}</code></td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-secondary" href="/ui/prompts/{{ p.slug }}">Редактировать</a>
+              <a class="btn btn-sm btn-outline-primary" href="/ui/prompts/{{ p.slug }}/test">Test</a>
+              <form class="d-inline" method="post" action="/ui/prompts/{{ p.slug }}/delete" onsubmit="return confirm('Удалить промт {{ p.slug }}?')">
+                <button class="btn btn-sm btn-outline-danger" type="submit">Удалить</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        {% if prompts|length == 0 %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-4">Промтов пока нет</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="mt-4">
+  <div class="alert alert-info">
+    <div class="fw-semibold mb-1">Как использовать из Puzzlebot</div>
+    <div class="small">
+      Вызывайте <code>POST /api/v1/puzzlebot/ai</code> и передавайте <code>prompt_id</code> равный <code>slug</code>.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+

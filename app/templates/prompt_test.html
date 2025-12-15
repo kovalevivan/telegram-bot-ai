@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h4 mb-1">Тест промта: <code>{{ prompt.slug }}</code></h1>
+    <div class="text-muted small">{{ prompt.name }}</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="/ui/prompts/{{ prompt.slug }}">Редактировать</a>
+    <a class="btn btn-outline-secondary" href="/ui/prompts">Назад</a>
+  </div>
+</div>
+
+{% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Params (JSON)</div>
+        <form method="post" action="/ui/prompts/{{ prompt.slug }}/test">
+          <textarea class="form-control" name="params_json" rows="10">{{ params_json }}</textarea>
+          <div class="form-text">Должен быть JSON-объект, например: <code>{"name":"Иван"}</code></div>
+          <button class="btn btn-primary mt-3" type="submit">Запустить тест</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Rendered system</div>
+        <pre class="mb-0"><code>{{ rendered_system or "" }}</code></pre>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Rendered user</div>
+        <pre class="mb-0"><code>{{ rendered_user or "" }}</code></pre>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">LLM response</div>
+        <pre class="mb-0"><code>{{ llm_text or "" }}</code></pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+

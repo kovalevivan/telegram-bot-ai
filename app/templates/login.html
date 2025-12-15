@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h1 class="h5 mb-3">Вход в админку</h1>
+        {% if error %}
+          <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/ui/login">
+          <div class="mb-3">
+            <label class="form-label">Логин</label>
+            <input class="form-control" name="username" autocomplete="username" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Пароль</label>
+            <input class="form-control" type="password" name="password" autocomplete="current-password" required>
+          </div>
+          <button class="btn btn-primary w-100" type="submit">Войти</button>
+        </form>
+      </div>
+    </div>
+    <div class="text-muted small mt-3">
+      Пароль задаётся через переменные окружения <code>ADMIN_USERNAME</code>/<code>ADMIN_PASSWORD</code>.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
