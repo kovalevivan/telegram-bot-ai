@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__
+*.pyc
+.DS_Store
+.idea
+.vscode
+
+# secrets
+.env
+
+# runtime db/logs
+data/app.db
+data/*.db
+*.log
+
+
