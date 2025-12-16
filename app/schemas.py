@@ -51,7 +51,8 @@ class PuzzlebotAIRequest(BaseModel):
     bot_api_key: str = Field(..., description="Telegram bot token")
     chat_id: int
     user_id: int | None = Field(default=None, description="Опционально (для логов/совместимости)")
-    parse_mode: str | None = Field(default=None, description="HTML | MarkdownV2 (опционально)")
+    # parse_mode intentionally unused: we always send plain text to avoid formatting-related Telegram errors
+    parse_mode: str | None = Field(default=None, description="(не используется) всегда отправляем plain text")
 
     # Optional overrides for mode A (keep API small by default)
     model: str | None = Field(default=None, description="Опционально: переопределить модель")
