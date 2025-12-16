@@ -4,7 +4,9 @@ import httpx
 
 
 class TelegramError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, sent_parts: int = 0):
+        super().__init__(message)
+        self.sent_parts = sent_parts
 
 
 TELEGRAM_MESSAGE_LIMIT = 4096
@@ -84,6 +86,7 @@ async def send_message(
     # иначе можно порезать HTML/Markdown посередине и получить 400.
     effective_parse_mode = parse_mode if len(chunks) == 1 else None
 
+    sent = 0
     for part in chunks:
         payload: dict = {
             "chat_id": chat_id,
@@ -95,8 +98,9 @@ async def send_message(
         try:
             r = await client.post(url, json=payload)
         except httpx.HTTPError as e:
-            raise TelegramError(f"Telegram request failed: {e}") from e
+            raise TelegramError(f"Telegram request failed: {e}", sent_parts=sent) from e
         if r.status_code >= 400:
-            raise TelegramError(f"Telegram error {r.status_code}: {r.text[:2000]}")
+            raise TelegramError(f"Telegram error {r.status_code}: {r.text[:2000]}", sent_parts=sent)
+        sent += 1
 
 

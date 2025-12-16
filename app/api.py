@@ -18,6 +18,7 @@ from app.settings import settings
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 log = logging.getLogger("uvicorn.error")
+FALLBACK_ERROR_TEXT = "Что-то пошло не так, попробуйте позже."
 
 
 async def _get_prompt_by_slug(prompt_id: str) -> Prompt:
@@ -190,6 +191,30 @@ async def _process_request(
             tg_ok = True
         except TelegramError as e:
             tg_error = str(e)
+            # If nothing was delivered (e.sent_parts==0), try to send a short fallback message
+            if getattr(e, "sent_parts", 0) == 0:
+                try:
+                    await send_message(
+                        http,
+                        bot_token=body.bot_api_key,
+                        chat_id=chat_id,
+                        text=FALLBACK_ERROR_TEXT,
+                        parse_mode=None,
+                    )
+                except TelegramError:
+                    pass
+    elif not llm_ok:
+        # LLM/render failed -> try to notify user in Telegram
+        try:
+            await send_message(
+                http,
+                bot_token=body.bot_api_key,
+                chat_id=chat_id,
+                text=FALLBACK_ERROR_TEXT,
+                parse_mode=None,
+            )
+        except TelegramError:
+            pass
 
     async with session_scope() as session:
         session.add(
