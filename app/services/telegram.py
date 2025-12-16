@@ -78,13 +78,13 @@ async def send_message(
     text: str,
     parse_mode: str | None = None,
     disable_web_page_preview: bool = True,
+    split: bool = True,
 ) -> None:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
-    chunks = _split_text(text, TELEGRAM_SAFE_LIMIT)
-    # Если включён parse_mode и нужно резать — безопаснее отправить plain text,
-    # иначе можно порезать HTML/Markdown посередине и получить 400.
-    effective_parse_mode = parse_mode if len(chunks) == 1 else None
+    chunks = _split_text(text, TELEGRAM_SAFE_LIMIT) if split else [text]
+    # If caller didn't pre-split and we need to split, drop parse_mode to avoid cutting markup.
+    effective_parse_mode = parse_mode if (not split or len(chunks) == 1) else None
 
     sent = 0
     for part in chunks:

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db import session_scope
 from app.models import Prompt, RequestLog
 from app.schemas import ProcessedResponse, PromptCreate, PromptOut, PromptUpdate, PuzzlebotAIRequest, RequestLogOut
+from app.services.formatting import markdown_to_telegram_html_blocks, pack_html_blocks
 from app.services.llm import LLMError, openai_chat_completion
 from app.services.rendering import render_template
 from app.services.telegram import TelegramError, send_message
@@ -19,6 +20,7 @@ from app.settings import settings
 router = APIRouter(prefix="/api/v1", tags=["api"])
 log = logging.getLogger("uvicorn.error")
 FALLBACK_ERROR_TEXT = "Что-то пошло не так, попробуйте позже."
+TELEGRAM_HTML_SAFE_LIMIT = 3900
 
 
 async def _get_prompt_by_slug(prompt_id: str) -> Prompt:
@@ -180,14 +182,24 @@ async def _process_request(
                 llm_error = str(e)
 
     if llm_ok and llm_text:
+        # Apply formatting for Telegram if parse_mode is not explicitly requested.
+        if body.parse_mode is None:
+            html_blocks = markdown_to_telegram_html_blocks(llm_text)
+            chunks = pack_html_blocks(html_blocks, limit=TELEGRAM_HTML_SAFE_LIMIT)
+            parse_mode = "HTML"
+        else:
+            chunks = [llm_text]
+            parse_mode = body.parse_mode
         try:
-            await send_message(
-                http,
-                bot_token=body.bot_api_key,
-                chat_id=chat_id,
-                text=llm_text,
-                parse_mode=body.parse_mode,
-            )
+            for part in chunks:
+                await send_message(
+                    http,
+                    bot_token=body.bot_api_key,
+                    chat_id=chat_id,
+                    text=part,
+                    parse_mode=parse_mode,
+                    split=False,  # already chunked (and keeps markup intact)
+                )
             tg_ok = True
         except TelegramError as e:
             tg_error = str(e)
