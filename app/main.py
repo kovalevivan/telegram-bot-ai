@@ -51,10 +51,9 @@ app = FastAPI(
 app.add_middleware(PuzzlebotRequestLoggingMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax")
 
-@app.get("/", include_in_schema=False)
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def root_health():
     # Many platforms use HEAD / for health checks.
-    # FastAPI automatically serves HEAD for GET routes.
     return {"status": "ok"}
 
 @app.exception_handler(RequestValidationError)
