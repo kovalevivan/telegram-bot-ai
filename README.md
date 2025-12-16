@@ -59,10 +59,10 @@ Swagger: `http://localhost:8080/docs`
 }
 ```
 
-Ответ (Puzzlebot может его игнорировать):
+Ответ (теперь синхронный: 200 только после отправки в Telegram):
 
 ```json
-{ "status": "accepted", "request_id": "..." }
+{ "status": "ok", "request_id": "...", "llm_ok": true, "telegram_ok": true }
 ```
 
 ## Хранение данных

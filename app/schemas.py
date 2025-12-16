@@ -88,3 +88,26 @@ class AcceptedResponse(BaseModel):
     request_id: str
 
 
+class ProcessedResponse(BaseModel):
+    status: str = "ok"
+    request_id: str
+    llm_ok: bool
+    telegram_ok: bool
+
+
+class RequestLogOut(BaseModel):
+    request_id: str
+    prompt_slug: str
+    chat_id: int
+    user_id: int
+
+    llm_ok: bool
+    llm_error: str | None = None
+    telegram_ok: bool
+    telegram_error: str | None = None
+
+    llm_response_text: str | None = None
+
+    class Config:
+        from_attributes = True
+

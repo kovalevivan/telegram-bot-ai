@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import uuid
+import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.db import session_scope
 from app.models import Prompt, RequestLog
-from app.schemas import AcceptedResponse, PromptCreate, PromptOut, PromptUpdate, PuzzlebotAIRequest
+from app.schemas import ProcessedResponse, PromptCreate, PromptOut, PromptUpdate, PuzzlebotAIRequest, RequestLogOut
 from app.services.llm import LLMError, openai_chat_completion
 from app.services.rendering import render_template
 from app.services.telegram import TelegramError, send_message
@@ -16,6 +17,7 @@ from app.settings import settings
 
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
+log = logging.getLogger("uvicorn.error")
 
 
 async def _get_prompt_by_slug(prompt_id: str) -> Prompt:
@@ -95,6 +97,15 @@ async def delete_prompt(slug: str) -> dict:
         await session.commit()
     return {"status": "deleted"}
 
+@router.get("/requests/{request_id}", response_model=RequestLogOut)
+async def get_request_log(request_id: str) -> RequestLogOut:
+    async with session_scope() as session:
+        res = await session.execute(select(RequestLog).where(RequestLog.request_id == request_id))
+        obj = res.scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Request log not found yet")
+    return obj
+
 
 async def get_http_client() -> "object":
     # overridden in app.main via dependency override to return app.state.http
@@ -106,7 +117,7 @@ async def _process_request(
     request_id: str,
     body: PuzzlebotAIRequest,
     http,
-) -> None:
+) -> tuple[bool, bool, str | None, str | None]:
     chat_id = body.chat_id
 
     rendered_system = None
@@ -199,15 +210,31 @@ async def _process_request(
         )
         await session.commit()
 
+    # Log outcome to stdout/stderr for easy debugging on PaaS
+    if not llm_ok:
+        log.error("puzzlebot_done request_id=%s llm_ok=%s llm_error=%s", request_id, llm_ok, llm_error)
+    elif not tg_ok:
+        log.error("puzzlebot_done request_id=%s telegram_ok=%s telegram_error=%s", request_id, tg_ok, tg_error)
+    else:
+        log.info("puzzlebot_done request_id=%s ok", request_id)
 
-@router.post("/puzzlebot/ai", response_model=AcceptedResponse, status_code=202)
+    return llm_ok, tg_ok, llm_error, tg_error
+
+
+@router.post("/puzzlebot/ai", response_model=ProcessedResponse)
 async def puzzlebot_ai(
     body: PuzzlebotAIRequest,
-    background: BackgroundTasks,
     http=Depends(get_http_client),
-) -> AcceptedResponse:
+) -> ProcessedResponse:
     request_id = uuid.uuid4().hex
-    background.add_task(_process_request, request_id=request_id, body=body, http=http)
-    return AcceptedResponse(request_id=request_id)
+    llm_ok, tg_ok, llm_error, tg_error = await _process_request(request_id=request_id, body=body, http=http)
+
+    # "OK only after Telegram send"
+    if not llm_ok:
+        raise HTTPException(status_code=502, detail={"request_id": request_id, "stage": "llm", "error": llm_error})
+    if not tg_ok:
+        raise HTTPException(status_code=502, detail={"request_id": request_id, "stage": "telegram", "error": tg_error})
+
+    return ProcessedResponse(request_id=request_id, llm_ok=True, telegram_ok=True)
 
 
