@@ -51,6 +51,12 @@ app = FastAPI(
 app.add_middleware(PuzzlebotRequestLoggingMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax")
 
+@app.get("/", include_in_schema=False)
+async def root_health():
+    # Many platforms use HEAD / for health checks.
+    # FastAPI automatically serves HEAD for GET routes.
+    return {"status": "ok"}
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     # Make 422 debuggable in logs (masking secrets is handled by middleware; here we only log the error details).
