@@ -87,6 +87,7 @@ class PuzzlebotAIRequest(BaseModel):
 class AcceptedResponse(BaseModel):
     status: str = "accepted"
     request_id: str
+    error: str | None = None
 
 
 class ProcessedResponse(BaseModel):
