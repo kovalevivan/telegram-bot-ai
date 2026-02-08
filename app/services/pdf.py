@@ -183,9 +183,11 @@ def build_daily_mind_pdf(
     content_width = pdf.w - content_x - pdf.r_margin
     start_y = body_y + 8
 
+    render_headline = not is_html
+
     # Estimate card height before drawing background
     pdf.set_font(font_family, "B", 16)
-    headline_height = _estimate_multiline_height(pdf, text=headline or title or "DailyMind", width=content_width, line_height=8)
+    headline_height = _estimate_multiline_height(pdf, text=headline or title or "DailyMind", width=content_width, line_height=8) if render_headline else 0
 
     pdf.set_font(font_family, "", 11)
     date_line = (forecast_date or "").strip() or dt.datetime.now().strftime("%d %B %Y")
@@ -224,10 +226,11 @@ def build_daily_mind_pdf(
         pdf.set_y(body_y)
 
     pdf.set_xy(content_x, start_y)
-    pdf.set_font(font_family, "B", 16)
-    pdf.set_text_color(*TEXT_PRIMARY)
-    ensure_space(headline_height + 4)
-    pdf.multi_cell(w=0, h=8, txt=headline or title or "DailyMind", align="L")
+    if render_headline:
+        pdf.set_font(font_family, "B", 16)
+        pdf.set_text_color(*TEXT_PRIMARY)
+        ensure_space(headline_height + 4)
+        pdf.multi_cell(w=0, h=8, txt=headline or title or "DailyMind", align="L")
 
     if info_line:
         pdf.set_x(content_x)
