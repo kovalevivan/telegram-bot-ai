@@ -204,52 +204,54 @@ async def _process_request(
                 pdf_error = f"PDF generation error: {e}"
 
         if llm_ok and llm_text:
-            if body.send_pdf and pdf_bytes:
-                try:
-                    today = dt.datetime.now().strftime("%Y-%m-%d")
-                    filename = f"DailyMind-{today}.pdf"
-                    await send_document(
-                        http,
-                        bot_token=body.bot_api_key,
-                        chat_id=chat_id,
-                        filename=filename,
-                        file_bytes=pdf_bytes,
-                        caption="Ваш отчёт",
-                        parse_mode=None,
-                    )
-                    tg_ok = True
-                except TelegramError as e:
-                    tg_error = str(e)
+            if body.send_pdf:
+                if pdf_bytes:
+                    try:
+                        today = dt.datetime.now().strftime("%Y-%m-%d")
+                        filename = f"DailyMind-{today}.pdf"
+                        await send_document(
+                            http,
+                            bot_token=body.bot_api_key,
+                            chat_id=chat_id,
+                            filename=filename,
+                            file_bytes=pdf_bytes,
+                            caption="Ваш отчёт",
+                            parse_mode=None,
+                        )
+                        tg_ok = True
+                    except TelegramError as e:
+                        tg_error = str(e)
+                else:
+                    tg_error = pdf_error or "PDF generation failed"
 
             if not tg_ok:
                 if pdf_error and tg_error is None:
                     tg_error = pdf_error
-                try:
-                    # Plain text only (no parse_mode) to avoid formatting-related Telegram errors.
-                    # send_message will split long texts automatically.
-                    await send_message(
-                        http,
-                        bot_token=body.bot_api_key,
-                        chat_id=chat_id,
-                        text=llm_text,
-                        parse_mode=None,
-                        split=True,
-                    )
-                    tg_ok = True
-                except TelegramError as e:
-                    tg_error = str(e)
-                    # If nothing was delivered (e.sent_parts==0), try to send a short fallback message
-                    if getattr(e, "sent_parts", 0) == 0:
-                        try:
-                            await send_message(
-                                http,
-                                bot_token=body.bot_api_key,
-                                chat_id=chat_id,
-                                text=FALLBACK_ERROR_TEXT,
-                                parse_mode=None,
-                            )
-                        except TelegramError:
-                            pass
+                if not body.send_pdf:
+                    try:
+                        # Plain text only (no parse_mode) to avoid formatting-related Telegram errors.
+                        await send_message(
+                            http,
+                            bot_token=body.bot_api_key,
+                            chat_id=chat_id,
+                            text=llm_text,
+                            parse_mode=None,
+                            split=True,
+                        )
+                        tg_ok = True
+                    except TelegramError as e:
+                        tg_error = str(e)
+                        if getattr(e, "sent_parts", 0) == 0:
+                            try:
+                                await send_message(
+                                    http,
+                                    bot_token=body.bot_api_key,
+                                    chat_id=chat_id,
+                                    text=FALLBACK_ERROR_TEXT,
+                                    parse_mode=None,
+                                )
+                            except TelegramError:
+                                pass
         elif not llm_ok:
             # LLM/render failed -> try to notify user in Telegram
             try:

@@ -7,6 +7,7 @@ from typing import Iterable
 
 from html import unescape
 
+from html.parser import HTMLParser
 from PIL import Image
 from fpdf import FPDF
 from app.settings import settings
@@ -136,6 +137,83 @@ def _parse_text(text: str) -> tuple[str | None, list[str], list[str]]:
     return headline, bullets, paragraphs
 
 
+class _HTMLBlockParser(HTMLParser):
+    """
+    Tiny HTML walker that keeps only structure we care about.
+    Produces blocks of types: heading, paragraph, li, hr.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.blocks: list[dict] = []
+        self._current_tag: str | None = None
+        self._current_text: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in {"h1", "h2", "h3", "p", "div", "section", "li"}:
+            self._flush()
+            self._current_tag = tag
+        elif tag == "hr":
+            self._flush()
+            self.blocks.append({"type": "hr"})
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in {"h1", "h2", "h3", "p", "div", "section", "li"} and self._current_tag:
+            self._flush()
+            self._current_tag = None
+
+    def handle_data(self, data):
+        if self._current_tag:
+            self._current_text.append(data)
+
+    def handle_entityref(self, name):
+        self.handle_data(unescape(f"&{name};"))
+
+    def handle_charref(self, name):
+        try:
+            codepoint = int(name[1:], 16) if name.startswith("x") else int(name)
+            self.handle_data(chr(codepoint))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _flush(self):
+        if not self._current_text:
+            return
+        text = "".join(self._current_text).strip()
+        self._current_text = []
+        if not text:
+            return
+        tag = (self._current_tag or "").lower()
+        if tag in {"h1", "h2", "h3"}:
+            self.blocks.append({"type": "heading", "text": text})
+        elif tag == "li":
+            self.blocks.append({"type": "li", "text": text})
+        else:
+            self.blocks.append({"type": "paragraph", "text": text})
+
+
+def _parse_html_blocks(html: str) -> tuple[str | None, list[dict]]:
+    parser = _HTMLBlockParser()
+    parser.feed(html or "")
+    parser.close()
+    blocks = parser.blocks
+    if not blocks:
+        return None, []
+    main_heading = None
+    for idx, blk in enumerate(blocks):
+        if blk.get("type") == "heading":
+            main_heading = blk.get("text")
+            blocks = blocks[idx + 1 :]
+            break
+
+    # Drop duplicate headings that match the main heading (case-insensitive)
+    if main_heading:
+        blocks = [b for b in blocks if not (b.get("type") == "heading" and b.get("text", "").strip().lower() == main_heading.strip().lower())]
+    return main_heading, blocks
+
+
 def _multi_paragraph(pdf: FPDF, *, font_family: str, text_blocks: Iterable[str]) -> None:
     for block in text_blocks:
         pdf.set_font(font_family, "", 12)
@@ -159,11 +237,11 @@ def _sanitize_html(s: str) -> str:
         return ""
     # Drop script/style
     s = re.sub(r"<(script|style)[^>]*?>[\\s\\S]*?</\\1>", "", s, flags=re.I)
-    # Remove inline colors
-    s = re.sub(r'style=["\'][^"\']*color[^"\']*["\']', "", s, flags=re.I)
-    s = re.sub(r"<font[^>]*color=[\"'][^\"']+[\"'][^>]*>", "", s, flags=re.I)
-    s = re.sub(r"<span[^>]*color=[\"'][^\"']+[\"'][^>]*>", "<span>", s, flags=re.I)
-    s = s.replace("</font>", "")
+    # Remove inline colors and redundant tags that may force red text
+    s = re.sub(r'style=["\'][^"\']*?color[^"\']*?["\']', "", s, flags=re.I)
+    s = re.sub(r"<font[^>]*?color=[\"'][^\"']+[\"'][^>]*?>", "", s, flags=re.I)
+    s = re.sub(r"<span[^>]*?color=[\"'][^\"']+[\"'][^>]*?>", "<span>", s, flags=re.I)
+    s = re.sub(r"</font>", "", s, flags=re.I)
     return s
 
 
@@ -193,6 +271,37 @@ def _extract_first_block(html: str) -> tuple[str | None, str]:
 
 def _looks_like_html(s: str) -> bool:
     return bool(re.search(r"<[a-zA-Z][^>]*>", s or ""))
+
+
+def _safe_text(s: str) -> str:
+    """
+    Remove control characters and replace unsupported glyphs (e.g., emojis without font) with a placeholder.
+    """
+    if not s:
+        return ""
+    s = s.replace("\ufeff", "")
+    # Drop control chars
+    s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
+    # Replace astral-plane emojis with bullet if font can't render them; keep inside BMP.
+    return re.sub(r"[\U00010000-\U0010FFFF]", "•", s)
+
+
+def _safe_multicell(pdf: FPDF, *, width: float, line_height: float, text: str, align: str = "J"):
+    txt = _safe_text(text)
+    try:
+        pdf.multi_cell(w=width, h=line_height, txt=txt, align=align)
+    except Exception:  # noqa: BLE001
+        fallback = txt.encode("latin-1", "replace").decode("latin-1")
+        pdf.multi_cell(w=width, h=line_height, txt=fallback, align=align)
+
+
+def _font_for_text(text: str, *, heading_family: str, body_family: str) -> str:
+    """
+    Use the emoji-capable body font when text includes emoji/variation selectors.
+    """
+    if re.search(r"[\U0001F000-\U0001FFFF\u2600-\u27BF\ufe0f]", text or ""):
+        return body_family
+    return heading_family
 
 
 def _estimate_multiline_height(pdf: FPDF, *, text: str, width: float, line_height: float) -> float:
@@ -265,44 +374,30 @@ def build_daily_mind_pdf(
 
     is_html = _looks_like_html(text)
     sanitized_html = _sanitize_html(text) if is_html else ""
-    headline_from_html = None
-    body_html = sanitized_html
-    if is_html:
-        headline_from_html, body_html = _extract_first_block(sanitized_html)
-        text_for_height = _html_to_text(body_html)
-    else:
-        text_for_height = text
+    html_blocks: list[dict] = []
+    headline = None
+    bullets: list[str] = []
+    paragraphs: list[str] = []
 
-    headline, bullets, paragraphs = _parse_text(text_for_height)
-    if headline_from_html:
-        headline = headline_from_html
-    elif is_html and headline:
-        # If we didn't manage to extract via tags, try to drop the first occurrence of the headline text from HTML.
-        body_html = re.sub(re.escape(headline), "", body_html, count=1, flags=re.I)
-        body_html = re.sub(r"^(<[^>]+>\s*)+", "", body_html, flags=re.I)
-    elif not is_html and paragraphs and headline:
-        # Remove duplicate headline appearing again in text.
-        if paragraphs[0].strip().lower() == headline.strip().lower():
+    if is_html:
+        headline, html_blocks = _parse_html_blocks(sanitized_html)
+    else:
+        headline, bullets, paragraphs = _parse_text(text)
+        if paragraphs and headline and paragraphs[0].strip().lower() == headline.strip().lower():
             paragraphs = paragraphs[1:]
 
     content_x = 22
     content_width = pdf.w - content_x - pdf.r_margin
-    current_body_y = pdf.dm_body_y or body_y_first
-    start_y = current_body_y + 8
+    pdf.set_left_margin(content_x)
+    pdf.set_right_margin(pdf.r_margin)
+    pdf.set_x(content_x)
+    pdf.set_y((pdf.dm_body_y or body_y_first) + 6)
 
-    render_headline = True
-
-    # Estimate card height before drawing background
-    pdf.set_font(heading_family, "B", 18)
-    headline_height = (
-        _estimate_multiline_height(pdf, text=headline or title or "DailyMind", width=content_width, line_height=8)
-        if render_headline
-        else 0
-    )
-
-    pdf.set_font(heading_family, "", 11)
-    date_line = (forecast_date or "").strip() or dt.datetime.now().strftime("%d %B %Y")
-    date_height = 6 if date_line else 0
+    heading_for_title = _font_for_text(headline or title or "DailyMind", heading_family=heading_family, body_family=body_family)
+    pdf.set_font(heading_for_title, "B", 18)
+    pdf.set_text_color(*TEXT_PRIMARY)
+    _safe_multicell(pdf, width=content_width, line_height=8, text=headline or title or "DailyMind", align="L")
+    pdf.ln(2)
 
     info_chunks = []
     if birth_date:
@@ -312,98 +407,64 @@ def build_daily_mind_pdf(
     if birth_city:
         info_chunks.append(f"Город: {birth_city}")
     info_line = "  •  ".join(info_chunks)
-    info_height = 6 if info_line else 0
-
-    pdf.set_font(body_family, "", 12)
-    bullet_height = 0.0
-    paragraph_height = 0.0
-    html_height = 0.0
-    if is_html:
-        plain = text_for_height or ""
-        html_blocks = [blk.strip() for blk in (plain.split("\n\n") if "\n\n" in plain else plain.split("\n")) if blk.strip()]
-        # headline already extracted; body_html has it removed
-    else:
-        for item in bullets:
-            bullet_height += _estimate_multiline_height(pdf, text=item, width=content_width - 10, line_height=7) + 3
-        for block in paragraphs:
-            paragraph_height += _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
-
-    def ensure_space(needed: float):
-        if pdf.get_y() + needed <= pdf.h - pdf.b_margin:
-            return
-        pdf.add_page()
-        # Refresh cached values after new page sets dm_body_y
-        nonlocal current_body_y, start_y
-        current_body_y = pdf.dm_body_y or body_y_next
-        start_y = current_body_y + 8
-
-    pdf.set_xy(content_x, start_y)
-    if render_headline:
-        pdf.set_font(heading_family, "B", 18)
-        pdf.set_text_color(*TEXT_PRIMARY)
-        ensure_space(headline_height + 4)
-        pdf.multi_cell(w=0, h=8, txt=headline or title or "DailyMind", align="L")
-
     if info_line:
-        pdf.set_x(content_x)
-        pdf.set_font(heading_family, "", 10)
+        pdf.set_font(_font_for_text(info_line, heading_family=heading_family, body_family=body_family), "", 10)
         pdf.set_text_color(*TEXT_PRIMARY)
-        ensure_space(info_height + 2)
-        pdf.multi_cell(w=content_width, h=6, txt=info_line, align="L")
+        _safe_multicell(pdf, width=content_width, line_height=6, text=info_line, align="L")
         pdf.ln(2)
 
-    if is_html:
-        pdf.set_font(body_family, "", 12)
-        pdf.set_text_color(*TEXT_PRIMARY)
-        for block in html_blocks:
-            block_height = _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
-            ensure_space(block_height)
-            pdf.multi_cell(w=0, h=7, txt=block, align="J")
-            pdf.ln(2)
-    else:
-        if bullets:
-            pdf.set_font(heading_family, "B", 12)
-            pdf.set_text_color(*TEXT_PRIMARY)
-            ensure_space(7 + 2)
-            pdf.cell(w=0, h=7, txt="Ключевые моменты", ln=1)
-            pdf.ln(2)
+    pdf.set_font(body_family, "", 12)
+    pdf.set_text_color(*TEXT_PRIMARY)
 
-            for item in bullets:
-                ensure_space(9)
+    if is_html:
+        for blk in html_blocks:
+            btype = blk.get("type")
+            btext = blk.get("text", "")
+            pdf.set_x(content_x)
+            if btype == "heading":
+                pdf.set_font(_font_for_text(btext, heading_family=heading_family, body_family=body_family), "B", 13)
+                pdf.set_text_color(*TEXT_PRIMARY)
+                _safe_multicell(pdf, width=content_width, line_height=7, text=btext, align="L")
+                pdf.set_font(body_family, "", 12)
+                pdf.ln(2)
+            elif btype == "li":
                 y = pdf.get_y()
+                pdf.set_x(content_x)
                 pdf.set_fill_color(*ACCENT_GOLD)
                 pdf.set_draw_color(*ACCENT_GOLD)
-                pdf.ellipse(pdf.l_margin, y + 2, 4, 4, style="F")
-                pdf.set_xy(pdf.l_margin + 8, y)
-                pdf.set_font(body_family, "", 12)
+                pdf.ellipse(pdf.get_x(), y + 2, 3, 3, style="F")
+                pdf.set_x(content_x + 6)
                 pdf.set_text_color(*TEXT_PRIMARY)
-                pdf.multi_cell(w=0, h=7, txt=item, align="L")
+                _safe_multicell(pdf, width=content_width - 8, line_height=7, text=btext, align="J")
                 pdf.ln(1)
-            pdf.ln(2)
-
-        if paragraphs:
-            pdf.set_font(heading_family, "B", 12)
-            pdf.set_text_color(*TEXT_PRIMARY)
-            ensure_space(7 + 1)
-            pdf.cell(w=0, h=7, txt="Расшифровка", ln=1)
-            pdf.ln(1)
-            for block in paragraphs:
-                block_height = _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
-                ensure_space(block_height)
-                pdf.set_font(body_family, "", 12)
-                pdf.set_text_color(*TEXT_PRIMARY)
-                pdf.multi_cell(w=0, h=7, txt=block, align="J")
+            elif btype == "hr":
                 pdf.ln(2)
+            else:
+                pdf.set_text_color(*TEXT_PRIMARY)
+                _safe_multicell(pdf, width=content_width, line_height=7, text=btext, align="J")
+                pdf.ln(2)
+    else:
+        for block in paragraphs:
+            pdf.set_x(content_x)
+            _safe_multicell(pdf, width=content_width, line_height=7, text=block, align="J")
+            pdf.ln(2)
+        for item in bullets:
+            pdf.set_x(content_x)
+            y = pdf.get_y()
+            pdf.set_fill_color(*ACCENT_GOLD)
+            pdf.set_draw_color(*ACCENT_GOLD)
+            pdf.ellipse(pdf.get_x(), y + 2, 3, 3, style="F")
+            pdf.set_x(content_x + 6)
+            _safe_multicell(pdf, width=content_width - 8, line_height=7, text=item, align="J")
+            pdf.ln(1)
 
     pdf.ln(2)
-    ensure_space(6 if date_line else 0)
+    date_line = (forecast_date or "").strip() or dt.datetime.now().strftime("%d %B %Y")
     pdf.set_font(heading_family, "", 10)
     pdf.set_text_color(*TEXT_SECONDARY)
     if date_line:
-        pdf.ln(2)
-        pdf.set_font(heading_family, "", 10)
-        pdf.set_text_color(*TEXT_SECONDARY)
-        pdf.cell(w=0, h=6, txt=date_line, ln=1, align="R")
+        pdf.set_x(content_x)
+        _safe_multicell(pdf, width=content_width, line_height=6, text=date_line, align="R")
 
     raw = pdf.output(dest="S")
     if isinstance(raw, (bytes, bytearray)):
