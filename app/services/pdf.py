@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Tuple
 
 from html import unescape
 
@@ -53,13 +53,15 @@ def _register_fonts(
     body_bold: str | None,
     body_italic: str | None,
     body_bold_italic: str | None,
-) -> tuple[str, str]:
+    emoji_font: str | None = None,
+) -> tuple[str, str, str | None]:
     """
     Register Unicode fonts for PDF rendering.
-    Returns (heading_family, body_family).
+    Returns (heading_family, body_family, emoji_family).
     """
     heading_family = "Helvetica"
     body_family = "Helvetica"
+    emoji_family: str | None = None
 
     hr = Path(heading_regular) if heading_regular else None
     hb = Path(heading_bold) if heading_bold else None
@@ -83,7 +85,18 @@ def _register_fonts(
     else:
         body_family = heading_family
 
-    return heading_family, body_family
+    ef = Path(emoji_font) if emoji_font else None
+    if ef and ef.exists():
+        try:
+            emoji_family = "DailyMindEmoji"
+            pdf.add_font(emoji_family, "", str(ef), uni=True)
+            pdf.add_font(emoji_family, "B", str(ef), uni=True)
+            pdf.add_font(emoji_family, "I", str(ef), uni=True)
+            pdf.add_font(emoji_family, "BI", str(ef), uni=True)
+        except Exception:  # noqa: BLE001
+            emoji_family = None
+
+    return heading_family, body_family, emoji_family
 
 
 def _draw_header(pdf: FPDF, *, logo_path: str | None) -> float:
@@ -275,15 +288,14 @@ def _looks_like_html(s: str) -> bool:
 
 def _safe_text(s: str) -> str:
     """
-    Remove control characters and replace unsupported glyphs (e.g., emojis without font) with a placeholder.
+    Remove control characters; keep emoji as-is so they can be rendered by emoji font.
     """
     if not s:
         return ""
     s = s.replace("\ufeff", "")
     # Drop control chars
     s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
-    # Replace astral-plane emojis with bullet if font can't render them; keep inside BMP.
-    return re.sub(r"[\U00010000-\U0010FFFF]", "•", s)
+    return s
 
 
 def _safe_multicell(pdf: FPDF, *, width: float, line_height: float, text: str, align: str = "J"):
@@ -295,12 +307,12 @@ def _safe_multicell(pdf: FPDF, *, width: float, line_height: float, text: str, a
         pdf.multi_cell(w=width, h=line_height, txt=fallback, align=align)
 
 
-def _font_for_text(text: str, *, heading_family: str, body_family: str) -> str:
+def _font_for_text(text: str, *, heading_family: str, body_family: str, emoji_family: str | None) -> str:
     """
     Use the emoji-capable body font when text includes emoji/variation selectors.
     """
-    if re.search(r"[\U0001F000-\U0001FFFF\u2600-\u27BF\ufe0f]", text or ""):
-        return body_family
+    if emoji_family and re.search(r"[\U0001F000-\U0010FFFF\u2600-\u27BF\ufe0f]", text or ""):
+        return emoji_family
     return heading_family
 
 
@@ -339,7 +351,7 @@ def build_daily_mind_pdf(
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.set_margins(18, 18, 18)
 
-    heading_family, body_family = _register_fonts(
+    heading_family, body_family, emoji_family = _register_fonts(
         pdf,
         heading_regular=font_path_regular,
         heading_bold=font_path_bold,
@@ -347,6 +359,7 @@ def build_daily_mind_pdf(
         body_bold=settings.pdf_body_font_bold_path,
         body_italic=settings.pdf_body_font_italic_path,
         body_bold_italic=settings.pdf_body_font_bold_italic_path,
+        emoji_font=settings.pdf_emoji_font_path,
     )
     pdf.add_page()
 
@@ -393,10 +406,11 @@ def build_daily_mind_pdf(
     pdf.set_x(content_x)
     pdf.set_y((pdf.dm_body_y or body_y_first) + 6)
 
-    heading_for_title = _font_for_text(headline or title or "DailyMind", heading_family=heading_family, body_family=body_family)
+    title_text = re.sub(r"^[\\s•·\\-]+", "", (headline or title or "DailyMind")).strip()
+    heading_for_title = _font_for_text(title_text, heading_family=heading_family, body_family=body_family, emoji_family=emoji_family)
     pdf.set_font(heading_for_title, "B", 18)
     pdf.set_text_color(*TEXT_PRIMARY)
-    _safe_multicell(pdf, width=content_width, line_height=8, text=headline or title or "DailyMind", align="L")
+    _safe_multicell(pdf, width=content_width, line_height=8, text=title_text, align="L")
     pdf.ln(2)
 
     info_chunks = []
@@ -408,7 +422,7 @@ def build_daily_mind_pdf(
         info_chunks.append(f"Город: {birth_city}")
     info_line = "  •  ".join(info_chunks)
     if info_line:
-        pdf.set_font(_font_for_text(info_line, heading_family=heading_family, body_family=body_family), "", 10)
+        pdf.set_font(_font_for_text(info_line, heading_family=heading_family, body_family=body_family, emoji_family=emoji_family), "", 10)
         pdf.set_text_color(*TEXT_PRIMARY)
         _safe_multicell(pdf, width=content_width, line_height=6, text=info_line, align="L")
         pdf.ln(2)
@@ -416,46 +430,103 @@ def build_daily_mind_pdf(
     pdf.set_font(body_family, "", 12)
     pdf.set_text_color(*TEXT_PRIMARY)
 
+    def height_for_block(block: dict) -> float:
+        btype = block.get("type")
+        btext = block.get("text", "")
+        if btype == "heading":
+            pdf.set_font(_font_for_text(btext, heading_family=heading_family, body_family=body_family, emoji_family=emoji_family), "B", 13)
+            return _estimate_multiline_height(pdf, text=btext, width=content_width, line_height=7) + 2
+        if btype == "li" or re.match(r"^[\\s•·\\-]+", btext):
+            pdf.set_font(_font_for_text(btext, heading_family=body_family, body_family=body_family, emoji_family=emoji_family), "", 12)
+            return _estimate_multiline_height(pdf, text=re.sub(r\"^[\\s•·\\-]+\", \"\", btext, count=1).lstrip(), width=content_width - 8, line_height=7) + 3
+        if btype == "hr":
+            return 4
+        pdf.set_font(_font_for_text(btext, heading_family=body_family, body_family=body_family, emoji_family=emoji_family), "", 12)
+        return _estimate_multiline_height(pdf, text=btext, width=content_width, line_height=7) + 2
+
+    def ensure_space(needed: float):
+        if pdf.get_y() + needed <= pdf.h - pdf.b_margin:
+            return
+        pdf.add_page()
+        pdf.set_x(content_x)
+
     if is_html:
-        for blk in html_blocks:
+        for idx, blk in enumerate(html_blocks):
             btype = blk.get("type")
             btext = blk.get("text", "")
+            if btype == "paragraph" and re.match(r"^[\\s•·\\-]+", btext):
+                btype = "li"
+                btext = re.sub(r"^[\\s•·\\-]+", "", btext, count=1).lstrip()
+            # Keep heading with next block if possible
+            if btype == "heading":
+                next_block = html_blocks[idx + 1] if idx + 1 < len(html_blocks) else None
+                needed = height_for_block(blk) + (height_for_block(next_block) if next_block else 0)
+                ensure_space(needed + 2)
+            else:
+                ensure_space(height_for_block(blk))
             pdf.set_x(content_x)
             if btype == "heading":
-                pdf.set_font(_font_for_text(btext, heading_family=heading_family, body_family=body_family), "B", 13)
+                pdf.set_font(_font_for_text(btext, heading_family=heading_family, body_family=body_family, emoji_family=emoji_family), "B", 13)
                 pdf.set_text_color(*TEXT_PRIMARY)
                 _safe_multicell(pdf, width=content_width, line_height=7, text=btext, align="L")
                 pdf.set_font(body_family, "", 12)
                 pdf.ln(2)
             elif btype == "li":
+                clean = re.sub(r"^[\\s•·\\-]+", "", btext, count=1).lstrip()
                 y = pdf.get_y()
                 pdf.set_x(content_x)
                 pdf.set_fill_color(*ACCENT_GOLD)
                 pdf.set_draw_color(*ACCENT_GOLD)
                 pdf.ellipse(pdf.get_x(), y + 2, 3, 3, style="F")
                 pdf.set_x(content_x + 6)
+                font_for_block = _font_for_text(clean, heading_family=body_family, body_family=body_family, emoji_family=emoji_family)
+                pdf.set_font(font_for_block, "", 12)
                 pdf.set_text_color(*TEXT_PRIMARY)
-                _safe_multicell(pdf, width=content_width - 8, line_height=7, text=btext, align="J")
+                _safe_multicell(pdf, width=content_width - 8, line_height=7, text=clean, align="J")
                 pdf.ln(1)
             elif btype == "hr":
                 pdf.ln(2)
             else:
+                font_for_block = _font_for_text(btext, heading_family=body_family, body_family=body_family, emoji_family=emoji_family)
+                pdf.set_font(font_for_block, "", 12)
                 pdf.set_text_color(*TEXT_PRIMARY)
                 _safe_multicell(pdf, width=content_width, line_height=7, text=btext, align="J")
                 pdf.ln(2)
     else:
+        # Treat leading bullet markers inside paragraphs as list items to avoid double bullets.
         for block in paragraphs:
-            pdf.set_x(content_x)
-            _safe_multicell(pdf, width=content_width, line_height=7, text=block, align="J")
-            pdf.ln(2)
+            if re.match(r"^[\\s•·\\-]+", block):
+                clean = re.sub(r"^[\\s•·\\-]+", "", block, count=1).lstrip()
+                pdf.set_x(content_x)
+                ensure_space(height_for_block({"type": "li", "text": clean}))
+                y = pdf.get_y()
+                pdf.set_fill_color(*ACCENT_GOLD)
+                pdf.set_draw_color(*ACCENT_GOLD)
+                pdf.ellipse(pdf.get_x(), y + 2, 3, 3, style="F")
+                pdf.set_x(content_x + 6)
+                font_for_block = _font_for_text(clean, heading_family=body_family, body_family=body_family, emoji_family=emoji_family)
+                pdf.set_font(font_for_block, "", 12)
+                _safe_multicell(pdf, width=content_width - 8, line_height=7, text=clean, align="J")
+                pdf.ln(1)
+            else:
+                pdf.set_x(content_x)
+                ensure_space(height_for_block({"type": "paragraph", "text": block}))
+                font_for_block = _font_for_text(block, heading_family=body_family, body_family=body_family, emoji_family=emoji_family)
+                pdf.set_font(font_for_block, "", 12)
+                _safe_multicell(pdf, width=content_width, line_height=7, text=block, align="J")
+                pdf.ln(2)
         for item in bullets:
+            clean = re.sub(r"^[\\s•·\\-]+", "", item, count=1).lstrip()
             pdf.set_x(content_x)
+            ensure_space(height_for_block({"type": "li", "text": clean}))
             y = pdf.get_y()
             pdf.set_fill_color(*ACCENT_GOLD)
             pdf.set_draw_color(*ACCENT_GOLD)
             pdf.ellipse(pdf.get_x(), y + 2, 3, 3, style="F")
             pdf.set_x(content_x + 6)
-            _safe_multicell(pdf, width=content_width - 8, line_height=7, text=item, align="J")
+            font_for_block = _font_for_text(clean, heading_family=body_family, body_family=body_family, emoji_family=emoji_family)
+            pdf.set_font(font_for_block, "", 12)
+            _safe_multicell(pdf, width=content_width - 8, line_height=7, text=clean, align="J")
             pdf.ln(1)
 
     pdf.ln(2)
