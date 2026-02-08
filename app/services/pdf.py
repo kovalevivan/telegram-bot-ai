@@ -436,9 +436,10 @@ def build_daily_mind_pdf(
         if btype == "heading":
             pdf.set_font(_font_for_text(btext, heading_family=heading_family, body_family=body_family, emoji_family=emoji_family), "B", 13)
             return _estimate_multiline_height(pdf, text=btext, width=content_width, line_height=7) + 2
-        if btype == "li" or re.match(r"^[\\s•·\\-]+", btext):
+        if btype == "li" or re.match(r"^[\s•·-]+", btext):
             pdf.set_font(_font_for_text(btext, heading_family=body_family, body_family=body_family, emoji_family=emoji_family), "", 12)
-            return _estimate_multiline_height(pdf, text=re.sub(r\"^[\\s•·\\-]+\", \"\", btext, count=1).lstrip(), width=content_width - 8, line_height=7) + 3
+            clean = re.sub(r"^[\s•·-]+", "", btext, count=1).lstrip()
+            return _estimate_multiline_height(pdf, text=clean, width=content_width - 8, line_height=7) + 3
         if btype == "hr":
             return 4
         pdf.set_font(_font_for_text(btext, heading_family=body_family, body_family=body_family, emoji_family=emoji_family), "", 12)
@@ -454,9 +455,9 @@ def build_daily_mind_pdf(
         for idx, blk in enumerate(html_blocks):
             btype = blk.get("type")
             btext = blk.get("text", "")
-            if btype == "paragraph" and re.match(r"^[\\s•·\\-]+", btext):
+            if btype == "paragraph" and re.match(r"^[\s•·-]+", btext):
                 btype = "li"
-                btext = re.sub(r"^[\\s•·\\-]+", "", btext, count=1).lstrip()
+                btext = re.sub(r"^[\s•·-]+", "", btext, count=1).lstrip()
             # Keep heading with next block if possible
             if btype == "heading":
                 next_block = html_blocks[idx + 1] if idx + 1 < len(html_blocks) else None
@@ -472,7 +473,7 @@ def build_daily_mind_pdf(
                 pdf.set_font(body_family, "", 12)
                 pdf.ln(2)
             elif btype == "li":
-                clean = re.sub(r"^[\\s•·\\-]+", "", btext, count=1).lstrip()
+                clean = re.sub(r"^[\s•·-]+", "", btext, count=1).lstrip()
                 y = pdf.get_y()
                 pdf.set_x(content_x)
                 pdf.set_fill_color(*ACCENT_GOLD)
@@ -495,8 +496,8 @@ def build_daily_mind_pdf(
     else:
         # Treat leading bullet markers inside paragraphs as list items to avoid double bullets.
         for block in paragraphs:
-            if re.match(r"^[\\s•·\\-]+", block):
-                clean = re.sub(r"^[\\s•·\\-]+", "", block, count=1).lstrip()
+            if re.match(r"^[\s•·-]+", block):
+                clean = re.sub(r"^[\s•·-]+", "", block, count=1).lstrip()
                 pdf.set_x(content_x)
                 ensure_space(height_for_block({"type": "li", "text": clean}))
                 y = pdf.get_y()
@@ -516,7 +517,7 @@ def build_daily_mind_pdf(
                 _safe_multicell(pdf, width=content_width, line_height=7, text=block, align="J")
                 pdf.ln(2)
         for item in bullets:
-            clean = re.sub(r"^[\\s•·\\-]+", "", item, count=1).lstrip()
+            clean = re.sub(r"^[\s•·-]+", "", item, count=1).lstrip()
             pdf.set_x(content_x)
             ensure_space(height_for_block({"type": "li", "text": clean}))
             y = pdf.get_y()
