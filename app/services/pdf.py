@@ -248,6 +248,10 @@ def build_daily_mind_pdf(
         # If we didn't manage to extract via tags, try to drop the first occurrence of the headline text from HTML.
         body_html = re.sub(re.escape(headline), "", body_html, count=1, flags=re.I)
         body_html = re.sub(r"^(<[^>]+>\s*)+", "", body_html, flags=re.I)
+    elif not is_html and paragraphs and headline:
+        # Remove duplicate headline appearing again in text.
+        if paragraphs[0].strip().lower() == headline.strip().lower():
+            paragraphs = paragraphs[1:]
 
     content_x = 22
     content_width = pdf.w - content_x - pdf.r_margin
