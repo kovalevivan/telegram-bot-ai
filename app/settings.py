@@ -58,16 +58,18 @@ class Settings:
     pdf_font_bold_path: str = (
         _env("PDF_FONT_BOLD_PATH", "app/static/fonts/Inter-SemiBold.ttf") or "app/static/fonts/Inter-SemiBold.ttf"
     )
-    pdf_body_font_path: str = _env("PDF_BODY_FONT_PATH", "app/static/fonts/Georgia-Regular.ttf") or "app/static/fonts/Georgia-Regular.ttf"
+    pdf_body_font_path: str = _env("PDF_BODY_FONT_PATH", "/System/Library/Fonts/Apple Color Emoji.ttc") or "/System/Library/Fonts/Apple Color Emoji.ttc"
     pdf_body_font_bold_path: str = (
-        _env("PDF_BODY_FONT_BOLD_PATH", "app/static/fonts/Georgia-Bold.ttf") or "app/static/fonts/Georgia-Bold.ttf"
+        _env("PDF_BODY_FONT_BOLD_PATH", "/System/Library/Fonts/Apple Color Emoji.ttc")
+        or "/System/Library/Fonts/Apple Color Emoji.ttc"
     )
     pdf_body_font_italic_path: str = (
-        _env("PDF_BODY_FONT_ITALIC_PATH", "app/static/fonts/Georgia-Italic.ttf") or "app/static/fonts/Georgia-Italic.ttf"
+        _env("PDF_BODY_FONT_ITALIC_PATH", "/System/Library/Fonts/Apple Color Emoji.ttc")
+        or "/System/Library/Fonts/Apple Color Emoji.ttc"
     )
     pdf_body_font_bold_italic_path: str = (
-        _env("PDF_BODY_FONT_BOLD_ITALIC_PATH", "app/static/fonts/Georgia-BoldItalic.ttf")
-        or "app/static/fonts/Georgia-BoldItalic.ttf"
+        _env("PDF_BODY_FONT_BOLD_ITALIC_PATH", "/System/Library/Fonts/Apple Color Emoji.ttc")
+        or "/System/Library/Fonts/Apple Color Emoji.ttc"
     )
 
     # Debug logging (incoming requests)
