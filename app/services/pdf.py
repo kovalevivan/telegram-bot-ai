@@ -320,7 +320,7 @@ def build_daily_mind_pdf(
     html_height = 0.0
     if is_html:
         plain = text_for_height or ""
-        html_height = _estimate_multiline_height(pdf, text=plain, width=content_width, line_height=7) + 4
+        html_blocks = [blk.strip() for blk in (plain.split("\n\n") if "\n\n" in plain else plain.split("\n")) if blk.strip()]
         # headline already extracted; body_html has it removed
     else:
         for item in bullets:
@@ -355,8 +355,11 @@ def build_daily_mind_pdf(
     if is_html:
         pdf.set_font(body_family, "", 12)
         pdf.set_text_color(*TEXT_PRIMARY)
-        ensure_space(html_height + 4)
-        pdf.write_html(body_html.replace("\n", "<br>"))
+        for block in html_blocks:
+            block_height = _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
+            ensure_space(block_height)
+            pdf.multi_cell(w=0, h=7, txt=block, align="J")
+            pdf.ln(2)
     else:
         if bullets:
             pdf.set_font(heading_family, "B", 12)
