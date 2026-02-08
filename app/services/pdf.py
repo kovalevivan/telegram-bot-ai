@@ -164,6 +164,15 @@ def build_daily_mind_pdf(
     header_height = _draw_header(pdf, logo_path=logo_path)
     body_y = header_height + 8
 
+    def draw_background():
+        h = max(40.0, pdf.h - body_y - pdf.b_margin)
+        pdf.set_fill_color(*CARD_BG)
+        pdf.set_draw_color(226, 232, 246)
+        pdf.set_line_width(0.2)
+        pdf.rect(x=14, y=body_y, w=182, h=h, style="FD")
+
+    draw_background()
+
     is_html = _looks_like_html(text)
     sanitized_html = _sanitize_html(text) if is_html else ""
     text_for_height = _html_to_text(text) if is_html else text
@@ -205,51 +214,44 @@ def build_daily_mind_pdf(
         for block in paragraphs:
             paragraph_height += _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
 
-    content_height = (
-        headline_height
-        + 4
-        + (3 if info_line else 0)
-        + info_height
-        + (6 if bullets else 0)
-        + bullet_height
-        + (6 if paragraphs or is_html else 0)
-        + paragraph_height
-        + html_height
-        + 10  # footer hint
-        + date_height
-    )
-    card_height = max(60.0, content_height + 12)
-
-    pdf.set_y(body_y)
-    pdf.set_fill_color(*CARD_BG)
-    pdf.set_draw_color(226, 232, 246)
-    pdf.set_line_width(0.2)
-    pdf.rect(x=14, y=body_y, w=182, h=card_height, style="FD")
+    def ensure_space(needed: float):
+        if pdf.get_y() + needed <= pdf.h - pdf.b_margin:
+            return
+        pdf.add_page()
+        # Use plain background on continuation pages
+        _draw_header(pdf, logo_path=None)
+        draw_background()
+        pdf.set_y(body_y)
 
     pdf.set_xy(content_x, start_y)
     pdf.set_font(font_family, "B", 16)
     pdf.set_text_color(*TEXT_PRIMARY)
+    ensure_space(headline_height + 4)
     pdf.multi_cell(w=0, h=8, txt=headline or title or "DailyMind", align="L")
 
     if info_line:
         pdf.set_x(content_x)
         pdf.set_font(font_family, "", 10)
         pdf.set_text_color(*TEXT_PRIMARY)
+        ensure_space(info_height + 2)
         pdf.multi_cell(w=content_width, h=6, txt=info_line, align="L")
         pdf.ln(2)
 
     if is_html:
         pdf.set_font(font_family, "", 12)
         pdf.set_text_color(*TEXT_PRIMARY)
+        ensure_space(html_height + 4)
         pdf.write_html(sanitized_html.replace("\n", "<br>"))
     else:
         if bullets:
             pdf.set_font(font_family, "B", 12)
             pdf.set_text_color(*TEXT_PRIMARY)
+            ensure_space(7 + 2)
             pdf.cell(w=0, h=7, txt="Ключевые моменты", ln=1)
             pdf.ln(2)
 
             for item in bullets:
+                ensure_space(9)
                 y = pdf.get_y()
                 pdf.set_fill_color(*ACCENT_GOLD)
                 pdf.set_draw_color(*ACCENT_GOLD)
@@ -264,13 +266,21 @@ def build_daily_mind_pdf(
         if paragraphs:
             pdf.set_font(font_family, "B", 12)
             pdf.set_text_color(*TEXT_PRIMARY)
+            ensure_space(7 + 1)
             pdf.cell(w=0, h=7, txt="Расшифровка", ln=1)
             pdf.ln(1)
-            _multi_paragraph(pdf, font_family=font_family, text_blocks=paragraphs)
+            for block in paragraphs:
+                block_height = _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
+                ensure_space(block_height)
+                pdf.set_font(font_family, "", 12)
+                pdf.set_text_color(*TEXT_PRIMARY)
+                pdf.multi_cell(w=0, h=7, txt=block, align="J")
+                pdf.ln(2)
 
     pdf.ln(2)
     pdf.set_font(font_family, "", 10)
     pdf.set_text_color(*TEXT_SECONDARY)
+    ensure_space(6 + (8 if date_line else 0))
     pdf.multi_cell(
         w=0,
         h=6,
