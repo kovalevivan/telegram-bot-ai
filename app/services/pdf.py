@@ -5,8 +5,11 @@ import re
 from pathlib import Path
 from typing import Iterable
 
+from html import unescape
+
 from PIL import Image
 from fpdf import FPDF
+from fpdf.html import HTMLMixin
 
 
 ACCENT_GOLD = (231, 193, 117)
@@ -16,6 +19,10 @@ HEADER_NIGHT = (28, 35, 66)
 CARD_BG = (246, 248, 254)
 TEXT_PRIMARY = (26, 31, 45)
 TEXT_SECONDARY = (94, 104, 128)
+
+
+class DailyMindPDF(FPDF, HTMLMixin):
+    pass
 
 
 def _register_fonts(pdf: FPDF, *, regular_path: str | None, bold_path: str | None) -> str:
@@ -29,6 +36,8 @@ def _register_fonts(pdf: FPDF, *, regular_path: str | None, bold_path: str | Non
         family = "DailyMind"
         pdf.add_font(family, "", str(regular), uni=True)
         pdf.add_font(family, "B", str(bold if bold and bold.exists() else regular), uni=True)
+        pdf.add_font(family, "I", str(regular), uni=True)
+        pdf.add_font(family, "BI", str(bold if bold and bold.exists() else regular), uni=True)
         return family
     return "Helvetica"
 
@@ -92,6 +101,28 @@ def _multi_paragraph(pdf: FPDF, *, font_family: str, text_blocks: Iterable[str])
         pdf.ln(2)
 
 
+def _html_to_text(s: str) -> str:
+    if not s:
+        return ""
+    t = re.sub(r"<br\\s*/?>", "\n", s, flags=re.I)
+    t = re.sub(r"</p>", "\n\n", t, flags=re.I)
+    t = re.sub(r"</li>", "\n", t, flags=re.I)
+    t = re.sub(r"<[^>]+>", "", t)
+    return unescape(t)
+
+
+def _sanitize_html(s: str) -> str:
+    if not s:
+        return ""
+    # Drop script/style
+    s = re.sub(r"<(script|style)[^>]*?>[\\s\\S]*?</\\1>", "", s, flags=re.I)
+    return s
+
+
+def _looks_like_html(s: str) -> bool:
+    return bool(re.search(r"<[a-zA-Z][^>]*>", s or ""))
+
+
 def _estimate_multiline_height(pdf: FPDF, *, text: str, width: float, line_height: float) -> float:
     words = (text or "").split()
     if not words:
@@ -123,7 +154,7 @@ def build_daily_mind_pdf(
     """
     Render a branded DailyMind PDF and return raw bytes.
     """
-    pdf = FPDF(format="A4")
+    pdf = DailyMindPDF(format="A4")
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.set_margins(18, 18, 18)
 
@@ -133,7 +164,11 @@ def build_daily_mind_pdf(
     header_height = _draw_header(pdf, logo_path=logo_path)
     body_y = header_height + 8
 
-    headline, bullets, paragraphs = _parse_text(text)
+    is_html = _looks_like_html(text)
+    sanitized_html = _sanitize_html(text) if is_html else ""
+    text_for_height = _html_to_text(text) if is_html else text
+
+    headline, bullets, paragraphs = _parse_text(text_for_height)
 
     content_x = 22
     content_width = pdf.w - content_x - pdf.r_margin
@@ -158,12 +193,16 @@ def build_daily_mind_pdf(
 
     pdf.set_font(font_family, "", 12)
     bullet_height = 0.0
-    for item in bullets:
-        bullet_height += _estimate_multiline_height(pdf, text=item, width=content_width - 10, line_height=7) + 3
-
     paragraph_height = 0.0
-    for block in paragraphs:
-        paragraph_height += _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
+    html_height = 0.0
+    if is_html:
+        plain = text_for_height or ""
+        html_height = _estimate_multiline_height(pdf, text=plain, width=content_width, line_height=7) + 4
+    else:
+        for item in bullets:
+            bullet_height += _estimate_multiline_height(pdf, text=item, width=content_width - 10, line_height=7) + 3
+        for block in paragraphs:
+            paragraph_height += _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
 
     content_height = (
         headline_height
@@ -172,8 +211,9 @@ def build_daily_mind_pdf(
         + info_height
         + (6 if bullets else 0)
         + bullet_height
-        + (6 if paragraphs else 0)
+        + (6 if paragraphs or is_html else 0)
         + paragraph_height
+        + html_height
         + 10  # footer hint
         + date_height
     )
@@ -197,30 +237,35 @@ def build_daily_mind_pdf(
             pdf.cell(w=0, h=6, txt=f"{label}: {value}", ln=1)
         pdf.ln(2)
 
-    if bullets:
-        pdf.set_font(font_family, "B", 12)
+    if is_html:
+        pdf.set_font(font_family, "", 12)
         pdf.set_text_color(*TEXT_PRIMARY)
-        pdf.cell(w=0, h=7, txt="Ключевые моменты", ln=1)
-        pdf.ln(2)
-
-        for item in bullets:
-            y = pdf.get_y()
-            pdf.set_fill_color(*ACCENT_GOLD)
-            pdf.set_draw_color(*ACCENT_GOLD)
-            pdf.ellipse(pdf.l_margin, y + 2, 4, 4, style="F")
-            pdf.set_xy(pdf.l_margin + 8, y)
-            pdf.set_font(font_family, "", 12)
+        pdf.write_html(sanitized_html.replace("\n", "<br>"))
+    else:
+        if bullets:
+            pdf.set_font(font_family, "B", 12)
             pdf.set_text_color(*TEXT_PRIMARY)
-            pdf.multi_cell(w=0, h=7, txt=item, align="L")
-            pdf.ln(1)
-        pdf.ln(2)
+            pdf.cell(w=0, h=7, txt="Ключевые моменты", ln=1)
+            pdf.ln(2)
 
-    if paragraphs:
-        pdf.set_font(font_family, "B", 12)
-        pdf.set_text_color(*TEXT_PRIMARY)
-        pdf.cell(w=0, h=7, txt="Расшифровка", ln=1)
-        pdf.ln(1)
-        _multi_paragraph(pdf, font_family=font_family, text_blocks=paragraphs)
+            for item in bullets:
+                y = pdf.get_y()
+                pdf.set_fill_color(*ACCENT_GOLD)
+                pdf.set_draw_color(*ACCENT_GOLD)
+                pdf.ellipse(pdf.l_margin, y + 2, 4, 4, style="F")
+                pdf.set_xy(pdf.l_margin + 8, y)
+                pdf.set_font(font_family, "", 12)
+                pdf.set_text_color(*TEXT_PRIMARY)
+                pdf.multi_cell(w=0, h=7, txt=item, align="L")
+                pdf.ln(1)
+            pdf.ln(2)
+
+        if paragraphs:
+            pdf.set_font(font_family, "B", 12)
+            pdf.set_text_color(*TEXT_PRIMARY)
+            pdf.cell(w=0, h=7, txt="Расшифровка", ln=1)
+            pdf.ln(1)
+            _multi_paragraph(pdf, font_family=font_family, text_blocks=paragraphs)
 
     pdf.ln(2)
     pdf.set_font(font_family, "", 10)
