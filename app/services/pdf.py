@@ -182,14 +182,15 @@ def build_daily_mind_pdf(
     date_line = (forecast_date or "").strip() or dt.datetime.now().strftime("%d %B %Y")
     date_height = 6 if date_line else 0
 
-    info_rows = []
+    info_chunks = []
     if birth_date:
-        info_rows.append(("Дата рождения", birth_date))
+        info_chunks.append(f"Дата рождения: {birth_date}")
     if birth_time:
-        info_rows.append(("Время рождения", birth_time))
+        info_chunks.append(f"Время рождения: {birth_time}")
     if birth_city:
-        info_rows.append(("Город", birth_city))
-    info_height = len(info_rows) * 6
+        info_chunks.append(f"Город: {birth_city}")
+    info_line = "  •  ".join(info_chunks)
+    info_height = 6 if info_line else 0
 
     pdf.set_font(font_family, "", 12)
     bullet_height = 0.0
@@ -207,7 +208,7 @@ def build_daily_mind_pdf(
     content_height = (
         headline_height
         + 4
-        + (3 if info_rows else 0)
+        + (3 if info_line else 0)
         + info_height
         + (6 if bullets else 0)
         + bullet_height
@@ -230,11 +231,11 @@ def build_daily_mind_pdf(
     pdf.set_text_color(*TEXT_PRIMARY)
     pdf.multi_cell(w=0, h=8, txt=headline or title or "DailyMind", align="L")
 
-    if info_rows:
+    if info_line:
+        pdf.set_x(content_x)
         pdf.set_font(font_family, "", 10)
         pdf.set_text_color(*TEXT_PRIMARY)
-        for label, value in info_rows:
-            pdf.cell(w=0, h=6, txt=f"{label}: {value}", ln=1)
+        pdf.multi_cell(w=content_width, h=6, txt=info_line, align="L")
         pdf.ln(2)
 
     if is_html:
