@@ -26,13 +26,17 @@ class DailyMindPDF(FPDF, HTMLMixin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.dm_body_y: float | None = None
+        self.dm_body_y_first: float | None = None
+        self.dm_body_y_next: float | None = None
         self.dm_draw_bg = None
         self.dm_header_drawer = None
 
     def add_page(self, *args, **kwargs):
         super().add_page(*args, **kwargs)
-        if self.page > 1 and self.dm_header_drawer:
-            self.dm_header_drawer(plain=True)
+        if self.page > 1 and self.dm_body_y_next is not None:
+            self.dm_body_y = self.dm_body_y_next
+        elif self.page == 1 and self.dm_body_y_first is not None:
+            self.dm_body_y = self.dm_body_y_first
         if self.dm_draw_bg:
             self.dm_draw_bg()
         if self.dm_body_y:
@@ -238,31 +242,25 @@ def build_daily_mind_pdf(
     pdf.add_page()
 
     header_height = _draw_header(pdf, logo_path=logo_path)
-    body_y = header_height + 8
+    body_y_first = header_height + 8
+    body_y_next = pdf.t_margin + 6
 
     def draw_background():
+        y0 = pdf.dm_body_y or body_y_first
         prev_auto = pdf.auto_page_break
         prev_margin = pdf.b_margin
         pdf.set_auto_page_break(auto=False)
-        h = max(40.0, pdf.h - body_y - prev_margin)
+        h = max(40.0, pdf.h - y0 - prev_margin)
         pdf.set_fill_color(*CARD_BG)
         pdf.set_draw_color(226, 232, 246)
         pdf.set_line_width(0.2)
-        pdf.rect(x=14, y=body_y, w=182, h=h, style="FD")
+        pdf.rect(x=14, y=y0, w=182, h=h, style="FD")
         pdf.set_auto_page_break(auto=prev_auto, margin=prev_margin)
 
-    pdf.dm_body_y = body_y
+    pdf.dm_body_y_first = body_y_first
+    pdf.dm_body_y_next = body_y_next
+    pdf.dm_body_y = body_y_first
     pdf.dm_draw_bg = draw_background
-    pdf.dm_header_drawer = lambda plain=False: _draw_header(pdf, logo_path=None if plain else logo_path)
-    draw_background()
-
-    def draw_background():
-        h = max(40.0, pdf.h - body_y - pdf.b_margin)
-        pdf.set_fill_color(*CARD_BG)
-        pdf.set_draw_color(226, 232, 246)
-        pdf.set_line_width(0.2)
-        pdf.rect(x=14, y=body_y, w=182, h=h, style="FD")
-
     draw_background()
 
     is_html = _looks_like_html(text)
@@ -289,7 +287,8 @@ def build_daily_mind_pdf(
 
     content_x = 22
     content_width = pdf.w - content_x - pdf.r_margin
-    start_y = body_y + 8
+    current_body_y = pdf.dm_body_y or body_y_first
+    start_y = current_body_y + 8
 
     render_headline = True
 
@@ -333,6 +332,10 @@ def build_daily_mind_pdf(
         if pdf.get_y() + needed <= pdf.h - pdf.b_margin:
             return
         pdf.add_page()
+        # Refresh cached values after new page sets dm_body_y
+        nonlocal current_body_y, start_y
+        current_body_y = pdf.dm_body_y or body_y_next
+        start_y = current_body_y + 8
 
     pdf.set_xy(content_x, start_y)
     if render_headline:
