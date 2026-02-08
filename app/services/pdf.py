@@ -145,9 +145,12 @@ def _sanitize_html(s: str) -> str:
     return s
 
 
-def _strip_first_block(html: str) -> str:
+def _extract_first_block(html: str) -> tuple[str | None, str]:
+    """
+    Return (first_block_text, html_without_that_block)
+    """
     if not html:
-        return html
+        return None, html
     patterns = [
         r"<(h1|h2|h3|p|div|section)[^>]*?>[\\s\\S]*?</\\1>",
         r"<li[^>]*?>[\\s\\S]*?</li>",
@@ -155,11 +158,15 @@ def _strip_first_block(html: str) -> str:
     for pat in patterns:
         m = re.search(pat, html, flags=re.I)
         if m:
-            return (html[: m.start()] + html[m.end() :]).lstrip()
+            block_html = m.group(0)
+            text = _html_to_text(block_html).strip()
+            remainder = (html[: m.start()] + html[m.end() :]).lstrip()
+            return (text or None), remainder
     br = re.search(r"<br\\s*/?>", html, flags=re.I)
     if br:
-        return html[br.end() :].lstrip()
-    return html
+        remainder = html[br.end() :].lstrip()
+        return None, remainder
+    return None, html
 
 
 def _looks_like_html(s: str) -> bool:
@@ -226,9 +233,17 @@ def build_daily_mind_pdf(
 
     is_html = _looks_like_html(text)
     sanitized_html = _sanitize_html(text) if is_html else ""
-    text_for_height = _html_to_text(text) if is_html else text
+    headline_from_html = None
+    body_html = sanitized_html
+    if is_html:
+        headline_from_html, body_html = _extract_first_block(sanitized_html)
+        text_for_height = _html_to_text(body_html)
+    else:
+        text_for_height = text
 
     headline, bullets, paragraphs = _parse_text(text_for_height)
+    if headline_from_html:
+        headline = headline_from_html
 
     content_x = 22
     content_width = pdf.w - content_x - pdf.r_margin
@@ -265,8 +280,7 @@ def build_daily_mind_pdf(
     if is_html:
         plain = text_for_height or ""
         html_height = _estimate_multiline_height(pdf, text=plain, width=content_width, line_height=7) + 4
-        if headline:
-            sanitized_html = _strip_first_block(sanitized_html)
+        # headline already extracted; body_html has it removed
     else:
         for item in bullets:
             bullet_height += _estimate_multiline_height(pdf, text=item, width=content_width - 10, line_height=7) + 3
@@ -301,7 +315,7 @@ def build_daily_mind_pdf(
         pdf.set_font(body_family, "", 12)
         pdf.set_text_color(*TEXT_PRIMARY)
         ensure_space(html_height + 4)
-        pdf.write_html(sanitized_html.replace("\n", "<br>"))
+        pdf.write_html(body_html.replace("\n", "<br>"))
     else:
         if bullets:
             pdf.set_font(heading_family, "B", 12)
