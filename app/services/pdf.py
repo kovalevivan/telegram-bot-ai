@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import math
 import re
 from pathlib import Path
 from typing import Iterable
@@ -119,6 +118,7 @@ def build_daily_mind_pdf(
     birth_date: str | None = None,
     birth_time: str | None = None,
     birth_city: str | None = None,
+    forecast_date: str | None = None,
 ) -> bytes:
     """
     Render a branded DailyMind PDF and return raw bytes.
@@ -136,7 +136,7 @@ def build_daily_mind_pdf(
     headline, bullets, paragraphs = _parse_text(text)
 
     content_x = 22
-    content_width = pdf.w - pdf.l_margin - pdf.r_margin
+    content_width = pdf.w - content_x - pdf.r_margin
     start_y = body_y + 8
 
     # Estimate card height before drawing background
@@ -144,7 +144,7 @@ def build_daily_mind_pdf(
     headline_height = _estimate_multiline_height(pdf, text=headline or title or "DailyMind", width=content_width, line_height=8)
 
     pdf.set_font(font_family, "", 11)
-    date_line = dt.datetime.now().strftime("%d %B %Y")
+    date_line = (forecast_date or "").strip() or dt.datetime.now().strftime("%d %B %Y")
     date_height = 6 if date_line else 0
 
     info_rows = []
@@ -159,7 +159,7 @@ def build_daily_mind_pdf(
     pdf.set_font(font_family, "", 12)
     bullet_height = 0.0
     for item in bullets:
-        bullet_height += _estimate_multiline_height(pdf, text=item, width=content_width - 12, line_height=7) + 3
+        bullet_height += _estimate_multiline_height(pdf, text=item, width=content_width - 10, line_height=7) + 3
 
     paragraph_height = 0.0
     for block in paragraphs:
@@ -168,14 +168,14 @@ def build_daily_mind_pdf(
     content_height = (
         headline_height
         + 4
-        + date_height
         + (3 if info_rows else 0)
         + info_height
         + (6 if bullets else 0)
         + bullet_height
         + (6 if paragraphs else 0)
         + paragraph_height
-        + 12  # footer hint
+        + 10  # footer hint
+        + date_height
     )
     card_height = max(60.0, content_height + 12)
 
@@ -189,11 +189,6 @@ def build_daily_mind_pdf(
     pdf.set_font(font_family, "B", 16)
     pdf.set_text_color(*TEXT_PRIMARY)
     pdf.multi_cell(w=0, h=8, txt=headline or title or "DailyMind", align="L")
-
-    pdf.set_font(font_family, "", 11)
-    pdf.set_text_color(*TEXT_SECONDARY)
-    pdf.cell(w=0, h=6, txt=date_line, ln=1)
-    pdf.ln(2)
 
     if info_rows:
         pdf.set_font(font_family, "", 10)
@@ -236,6 +231,11 @@ def build_daily_mind_pdf(
         txt="Совет: сохраните PDF, чтобы вернуться к рекомендациям позже.",
         align="L",
     )
+    if date_line:
+        pdf.ln(2)
+        pdf.set_font(font_family, "", 10)
+        pdf.set_text_color(*TEXT_SECONDARY)
+        pdf.cell(w=0, h=6, txt=date_line, ln=1, align="R")
 
     raw = pdf.output(dest="S")
     if isinstance(raw, (bytes, bytearray)):

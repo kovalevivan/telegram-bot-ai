@@ -67,6 +67,7 @@ class PuzzlebotAIRequest(BaseModel):
     birth_date: str | None = Field(default=None, description="Дата рождения для PDF (опционально)")
     birth_time: str | None = Field(default=None, description="Время рождения для PDF (опционально)")
     birth_city: str | None = Field(default=None, description="Город рождения для PDF (опционально)")
+    forecast_date: str | None = Field(default=None, description="Дата прогноза для PDF (опционально)")
 
     @model_validator(mode="before")
     @classmethod

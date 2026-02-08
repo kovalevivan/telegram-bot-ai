@@ -198,6 +198,7 @@ async def _process_request(
                     birth_date=body.birth_date,
                     birth_time=body.birth_time,
                     birth_city=body.birth_city,
+                    forecast_date=body.forecast_date,
                 )
             except Exception as e:  # noqa: BLE001
                 pdf_error = f"PDF generation error: {e}"
