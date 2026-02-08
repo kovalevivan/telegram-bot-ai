@@ -281,15 +281,9 @@ def build_daily_mind_pdf(
                 pdf.ln(2)
 
     pdf.ln(2)
+    ensure_space(6 if date_line else 0)
     pdf.set_font(font_family, "", 10)
     pdf.set_text_color(*TEXT_SECONDARY)
-    ensure_space(6 + (8 if date_line else 0))
-    pdf.multi_cell(
-        w=0,
-        h=6,
-        txt="Совет: сохраните PDF, чтобы вернуться к рекомендациям позже.",
-        align="L",
-    )
     if date_line:
         pdf.ln(2)
         pdf.set_font(font_family, "", 10)
