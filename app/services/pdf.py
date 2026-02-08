@@ -244,6 +244,10 @@ def build_daily_mind_pdf(
     headline, bullets, paragraphs = _parse_text(text_for_height)
     if headline_from_html:
         headline = headline_from_html
+    elif is_html and headline:
+        # If we didn't manage to extract via tags, try to drop the first occurrence of the headline text from HTML.
+        body_html = re.sub(re.escape(headline), "", body_html, count=1, flags=re.I)
+        body_html = re.sub(r"^(<[^>]+>\s*)+", "", body_html, flags=re.I)
 
     content_x = 22
     content_width = pdf.w - content_x - pdf.r_margin
