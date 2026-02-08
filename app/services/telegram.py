@@ -104,3 +104,32 @@ async def send_message(
         sent += 1
 
 
+async def send_document(
+    client: httpx.AsyncClient,
+    *,
+    bot_token: str,
+    chat_id: int,
+    filename: str,
+    file_bytes: bytes,
+    caption: str | None = None,
+    parse_mode: str | None = None,
+) -> None:
+    """
+    Send a single document (used for PDF delivery).
+    """
+    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+    data: dict[str, str | int] = {"chat_id": chat_id}
+    if caption:
+        # Telegram caption limit is 1024 chars; truncate softly.
+        safe_caption = caption.strip()
+        data["caption"] = (safe_caption[:1020] + "…") if len(safe_caption) > 1024 else safe_caption
+        if parse_mode:
+            data["parse_mode"] = parse_mode
+
+    files = {"document": (filename, file_bytes, "application/pdf")}
+    try:
+        r = await client.post(url, data=data, files=files)
+    except httpx.HTTPError as e:
+        raise TelegramError(f"Telegram request failed: {e}", sent_parts=0) from e
+    if r.status_code >= 400:
+        raise TelegramError(f"Telegram error {r.status_code}: {r.text[:2000]}", sent_parts=0)

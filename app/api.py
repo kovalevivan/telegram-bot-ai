@@ -12,8 +12,9 @@ from app.db import session_scope
 from app.models import Prompt, RequestLog
 from app.schemas import AcceptedResponse, PromptCreate, PromptOut, PromptUpdate, PuzzlebotAIRequest, RequestLogOut
 from app.services.llm import LLMError, openai_chat_completion
+from app.services.pdf import build_daily_mind_pdf
 from app.services.rendering import render_template
-from app.services.telegram import TelegramError, send_message
+from app.services.telegram import TelegramError, send_document, send_message
 from app.settings import settings
 
 
@@ -183,33 +184,65 @@ async def _process_request(
                 except LLMError as e:
                     llm_error = str(e)
 
-        if llm_ok and llm_text:
+        pdf_bytes: bytes | None = None
+        pdf_error: str | None = None
+
+        if llm_ok and llm_text and body.send_pdf:
             try:
-                # Plain text only (no parse_mode) to avoid formatting-related Telegram errors.
-                # send_message will split long texts automatically.
-                await send_message(
-                    http,
-                    bot_token=body.bot_api_key,
-                    chat_id=chat_id,
-                    text=llm_text,
-                    parse_mode=None,
-                    split=True,
+                pdf_bytes = build_daily_mind_pdf(
+                    llm_text,
+                    logo_path=settings.pdf_logo_path,
+                    font_path_regular=settings.pdf_font_path,
+                    font_path_bold=settings.pdf_font_bold_path,
                 )
-                tg_ok = True
-            except TelegramError as e:
-                tg_error = str(e)
-                # If nothing was delivered (e.sent_parts==0), try to send a short fallback message
-                if getattr(e, "sent_parts", 0) == 0:
-                    try:
-                        await send_message(
-                            http,
-                            bot_token=body.bot_api_key,
-                            chat_id=chat_id,
-                            text=FALLBACK_ERROR_TEXT,
-                            parse_mode=None,
-                        )
-                    except TelegramError:
-                        pass
+            except Exception as e:  # noqa: BLE001
+                pdf_error = f"PDF generation error: {e}"
+
+        if llm_ok and llm_text:
+            if body.send_pdf and pdf_bytes:
+                try:
+                    await send_document(
+                        http,
+                        bot_token=body.bot_api_key,
+                        chat_id=chat_id,
+                        filename="DailyMind-horoscope.pdf",
+                        file_bytes=pdf_bytes,
+                        caption="Ваш гороскоп на сегодня",
+                        parse_mode=None,
+                    )
+                    tg_ok = True
+                except TelegramError as e:
+                    tg_error = str(e)
+
+            if not tg_ok:
+                if pdf_error and tg_error is None:
+                    tg_error = pdf_error
+                try:
+                    # Plain text only (no parse_mode) to avoid formatting-related Telegram errors.
+                    # send_message will split long texts automatically.
+                    await send_message(
+                        http,
+                        bot_token=body.bot_api_key,
+                        chat_id=chat_id,
+                        text=llm_text,
+                        parse_mode=None,
+                        split=True,
+                    )
+                    tg_ok = True
+                except TelegramError as e:
+                    tg_error = str(e)
+                    # If nothing was delivered (e.sent_parts==0), try to send a short fallback message
+                    if getattr(e, "sent_parts", 0) == 0:
+                        try:
+                            await send_message(
+                                http,
+                                bot_token=body.bot_api_key,
+                                chat_id=chat_id,
+                                text=FALLBACK_ERROR_TEXT,
+                                parse_mode=None,
+                            )
+                        except TelegramError:
+                            pass
         elif not llm_ok:
             # LLM/render failed -> try to notify user in Telegram
             try:
@@ -315,5 +348,3 @@ async def puzzlebot_ai(
 
     background_tasks.add_task(_process_request, request_id=request_id, body=body, http=http)
     return AcceptedResponse(request_id=request_id, error=error)
-
-
