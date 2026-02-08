@@ -195,6 +195,9 @@ async def _process_request(
                     logo_path=settings.pdf_logo_path,
                     font_path_regular=settings.pdf_font_path,
                     font_path_bold=settings.pdf_font_bold_path,
+                    birth_date=body.birth_date,
+                    birth_time=body.birth_time,
+                    birth_city=body.birth_city,
                 )
             except Exception as e:  # noqa: BLE001
                 pdf_error = f"PDF generation error: {e}"
@@ -210,7 +213,7 @@ async def _process_request(
                         chat_id=chat_id,
                         filename=filename,
                         file_bytes=pdf_bytes,
-                        caption="Ваш прогноз",
+                        caption="Ваш отчёт",
                         parse_mode=None,
                     )
                     tg_ok = True

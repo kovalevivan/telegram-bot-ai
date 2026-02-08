@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import math
 import re
 from pathlib import Path
 from typing import Iterable
@@ -92,13 +93,32 @@ def _multi_paragraph(pdf: FPDF, *, font_family: str, text_blocks: Iterable[str])
         pdf.ln(2)
 
 
+def _estimate_multiline_height(pdf: FPDF, *, text: str, width: float, line_height: float) -> float:
+    words = (text or "").split()
+    if not words:
+        return 0.0
+    lines = 1
+    current_width = 0.0
+    for w in words:
+        ww = pdf.get_string_width(w)
+        if current_width and current_width + ww + pdf.get_string_width(" ") > width:
+            lines += 1
+            current_width = ww
+        else:
+            current_width += ww + pdf.get_string_width(" ")
+    return lines * line_height
+
+
 def build_daily_mind_pdf(
     text: str,
     *,
     logo_path: str | None,
     font_path_regular: str | None,
     font_path_bold: str | None,
-    title: str = "Прогноз",
+    title: str = "",
+    birth_date: str | None = None,
+    birth_time: str | None = None,
+    birth_city: str | None = None,
 ) -> bytes:
     """
     Render a branded DailyMind PDF and return raw bytes.
@@ -112,24 +132,75 @@ def build_daily_mind_pdf(
 
     header_height = _draw_header(pdf, logo_path=logo_path)
     body_y = header_height + 8
+
+    headline, bullets, paragraphs = _parse_text(text)
+
+    content_x = 22
+    content_width = pdf.w - pdf.l_margin - pdf.r_margin
+    start_y = body_y + 8
+
+    # Estimate card height before drawing background
+    pdf.set_font(font_family, "B", 16)
+    headline_height = _estimate_multiline_height(pdf, text=headline or title or "DailyMind", width=content_width, line_height=8)
+
+    pdf.set_font(font_family, "", 11)
+    date_line = dt.datetime.now().strftime("%d %B %Y")
+    date_height = 6 if date_line else 0
+
+    info_rows = []
+    if birth_date:
+        info_rows.append(("Дата рождения", birth_date))
+    if birth_time:
+        info_rows.append(("Время рождения", birth_time))
+    if birth_city:
+        info_rows.append(("Город", birth_city))
+    info_height = len(info_rows) * 6
+
+    pdf.set_font(font_family, "", 12)
+    bullet_height = 0.0
+    for item in bullets:
+        bullet_height += _estimate_multiline_height(pdf, text=item, width=content_width - 12, line_height=7) + 3
+
+    paragraph_height = 0.0
+    for block in paragraphs:
+        paragraph_height += _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
+
+    content_height = (
+        headline_height
+        + 4
+        + date_height
+        + (3 if info_rows else 0)
+        + info_height
+        + (6 if bullets else 0)
+        + bullet_height
+        + (6 if paragraphs else 0)
+        + paragraph_height
+        + 12  # footer hint
+    )
+    card_height = max(60.0, content_height + 12)
+
     pdf.set_y(body_y)
     pdf.set_fill_color(*CARD_BG)
     pdf.set_draw_color(226, 232, 246)
     pdf.set_line_width(0.2)
-    card_height = max(120, pdf.h - body_y - 18)
     pdf.rect(x=14, y=body_y, w=182, h=card_height, style="FD")
 
-    headline, bullets, paragraphs = _parse_text(text)
-
-    pdf.set_xy(22, body_y + 10)
+    pdf.set_xy(content_x, start_y)
     pdf.set_font(font_family, "B", 16)
     pdf.set_text_color(*TEXT_PRIMARY)
-    pdf.multi_cell(w=0, h=8, txt=headline or title, align="L")
+    pdf.multi_cell(w=0, h=8, txt=headline or title or "DailyMind", align="L")
 
     pdf.set_font(font_family, "", 11)
     pdf.set_text_color(*TEXT_SECONDARY)
-    pdf.cell(w=0, h=6, txt=f"{title} · {dt.datetime.now().strftime('%d %B %Y')}", ln=1)
-    pdf.ln(4)
+    pdf.cell(w=0, h=6, txt=date_line, ln=1)
+    pdf.ln(2)
+
+    if info_rows:
+        pdf.set_font(font_family, "", 10)
+        pdf.set_text_color(*TEXT_PRIMARY)
+        for label, value in info_rows:
+            pdf.cell(w=0, h=6, txt=f"{label}: {value}", ln=1)
+        pdf.ln(2)
 
     if bullets:
         pdf.set_font(font_family, "B", 12)

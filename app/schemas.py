@@ -63,6 +63,11 @@ class PuzzlebotAIRequest(BaseModel):
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=0, le=8192, description="0 = не задавать лимит в запросе к LLM")
 
+    # Optional user info for PDF rendering
+    birth_date: str | None = Field(default=None, description="Дата рождения для PDF (опционально)")
+    birth_time: str | None = Field(default=None, description="Время рождения для PDF (опционально)")
+    birth_city: str | None = Field(default=None, description="Город рождения для PDF (опционально)")
+
     @model_validator(mode="before")
     @classmethod
     def _parse_json_string_body(cls, data: Any):
