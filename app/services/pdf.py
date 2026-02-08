@@ -98,7 +98,7 @@ def build_daily_mind_pdf(
     logo_path: str | None,
     font_path_regular: str | None,
     font_path_bold: str | None,
-    title: str = "Гороскоп",
+    title: str = "Прогноз",
 ) -> bytes:
     """
     Render a branded DailyMind PDF and return raw bytes.
