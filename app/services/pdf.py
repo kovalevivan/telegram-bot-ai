@@ -145,6 +145,23 @@ def _sanitize_html(s: str) -> str:
     return s
 
 
+def _strip_first_block(html: str) -> str:
+    if not html:
+        return html
+    patterns = [
+        r"<(h1|h2|h3|p|div|section)[^>]*?>[\\s\\S]*?</\\1>",
+        r"<li[^>]*?>[\\s\\S]*?</li>",
+    ]
+    for pat in patterns:
+        m = re.search(pat, html, flags=re.I)
+        if m:
+            return (html[: m.start()] + html[m.end() :]).lstrip()
+    br = re.search(r"<br\\s*/?>", html, flags=re.I)
+    if br:
+        return html[br.end() :].lstrip()
+    return html
+
+
 def _looks_like_html(s: str) -> bool:
     return bool(re.search(r"<[a-zA-Z][^>]*>", s or ""))
 
@@ -217,7 +234,7 @@ def build_daily_mind_pdf(
     content_width = pdf.w - content_x - pdf.r_margin
     start_y = body_y + 8
 
-    render_headline = not is_html
+    render_headline = True
 
     # Estimate card height before drawing background
     pdf.set_font(heading_family, "B", 16)
@@ -248,6 +265,8 @@ def build_daily_mind_pdf(
     if is_html:
         plain = text_for_height or ""
         html_height = _estimate_multiline_height(pdf, text=plain, width=content_width, line_height=7) + 4
+        if headline:
+            sanitized_html = _strip_first_block(sanitized_html)
     else:
         for item in bullets:
             bullet_height += _estimate_multiline_height(pdf, text=item, width=content_width - 10, line_height=7) + 3
