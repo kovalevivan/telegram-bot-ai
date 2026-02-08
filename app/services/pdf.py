@@ -156,8 +156,9 @@ def _sanitize_html(s: str) -> str:
     # Drop script/style
     s = re.sub(r"<(script|style)[^>]*?>[\\s\\S]*?</\\1>", "", s, flags=re.I)
     # Remove inline colors
-    s = re.sub(r'style="[^"]*color[^"]*"', "", s, flags=re.I)
+    s = re.sub(r'style=["\'][^"\']*color[^"\']*["\']', "", s, flags=re.I)
     s = re.sub(r"<font[^>]*color=[\"'][^\"']+[\"'][^>]*>", "", s, flags=re.I)
+    s = re.sub(r"<span[^>]*color=[\"'][^\"']+[\"'][^>]*>", "<span>", s, flags=re.I)
     s = s.replace("</font>", "")
     return s
 
@@ -240,11 +241,15 @@ def build_daily_mind_pdf(
     body_y = header_height + 8
 
     def draw_background():
-        h = max(40.0, pdf.h - body_y - pdf.b_margin)
+        prev_auto = pdf.auto_page_break
+        prev_margin = pdf.b_margin
+        pdf.set_auto_page_break(auto=False)
+        h = max(40.0, pdf.h - body_y - prev_margin)
         pdf.set_fill_color(*CARD_BG)
         pdf.set_draw_color(226, 232, 246)
         pdf.set_line_width(0.2)
         pdf.rect(x=14, y=body_y, w=182, h=h, style="FD")
+        pdf.set_auto_page_break(auto=prev_auto, margin=prev_margin)
 
     pdf.dm_body_y = body_y
     pdf.dm_draw_bg = draw_background
