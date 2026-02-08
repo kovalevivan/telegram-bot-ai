@@ -210,7 +210,7 @@ async def _process_request(
                         chat_id=chat_id,
                         filename=filename,
                         file_bytes=pdf_bytes,
-                        caption="Ваш гороскоп на сегодня",
+                        caption="Ваш гороскоп",
                         parse_mode=None,
                     )
                     tg_ok = True

@@ -98,7 +98,7 @@ def build_daily_mind_pdf(
     logo_path: str | None,
     font_path_regular: str | None,
     font_path_bold: str | None,
-    title: str = "Гороскоп на день",
+    title: str = "Гороскоп",
 ) -> bytes:
     """
     Render a branded DailyMind PDF and return raw bytes.
@@ -124,7 +124,7 @@ def build_daily_mind_pdf(
     pdf.set_xy(22, body_y + 10)
     pdf.set_font(font_family, "B", 16)
     pdf.set_text_color(*TEXT_PRIMARY)
-    pdf.cell(w=0, h=9, txt=headline or title, ln=1)
+    pdf.multi_cell(w=0, h=8, txt=headline or title, align="L")
 
     pdf.set_font(font_family, "", 11)
     pdf.set_text_color(*TEXT_SECONDARY)
