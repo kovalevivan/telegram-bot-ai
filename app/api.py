@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import uuid
 import logging
+import uuid
+import datetime as dt
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import ValidationError
@@ -201,11 +202,13 @@ async def _process_request(
         if llm_ok and llm_text:
             if body.send_pdf and pdf_bytes:
                 try:
+                    today = dt.datetime.now().strftime("%Y-%m-%d")
+                    filename = f"DailyMind-{today}.pdf"
                     await send_document(
                         http,
                         bot_token=body.bot_api_key,
                         chat_id=chat_id,
-                        filename="DailyMind-horoscope.pdf",
+                        filename=filename,
                         file_bytes=pdf_bytes,
                         caption="Ваш гороскоп на сегодня",
                         parse_mode=None,

@@ -83,7 +83,7 @@ UI защищён админ‑логином (сессия). Пароль за�
 - **UI**: `SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`
 - **LLM**: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_DEFAULT_MODEL`, `LLM_AUTH_HEADER`, `LLM_AUTH_PREFIX`
 - **DB**: `DATABASE_URL`
-- **PDF**: `PDF_LOGO_PATH`, `PDF_FONT_PATH`, `PDF_FONT_BOLD_PATH` (при желании положите логотип в `app/static/dailymind-logo.jpg`)
+- **PDF**: `PDF_LOGO_PATH`, `PDF_FONT_PATH`, `PDF_FONT_BOLD_PATH` (по умолчанию фон в `app/static/dailymind-hero.jpg`)
 
 ### Частая ошибка с Timeweb Agents
 
@@ -92,4 +92,3 @@ UI защищён админ‑логином (сессия). Пароль за�
 - `LLM_BASE_URL` обычно уже заканчивается на `/v1`
 - `LLM_API_KEY` должен быть **реальным Bearer-токеном** (JWT/API token), как в рабочем `curl ... --header 'Authorization: Bearer <token>'`
 - `LLM_API_KEY` **не** должен быть id агента (UUID)
-

@@ -53,7 +53,7 @@ class Settings:
     )
 
     # PDF rendering
-    pdf_logo_path: str = _env("PDF_LOGO_PATH", "app/static/dailymind-logo.jpg") or "app/static/dailymind-logo.jpg"
+    pdf_logo_path: str = _env("PDF_LOGO_PATH", "app/static/dailymind-hero.jpg") or "app/static/dailymind-hero.jpg"
     pdf_font_path: str = _env("PDF_FONT_PATH", "app/static/fonts/Inter-Regular.ttf") or "app/static/fonts/Inter-Regular.ttf"
     pdf_font_bold_path: str = (
         _env("PDF_FONT_BOLD_PATH", "app/static/fonts/Inter-SemiBold.ttf") or "app/static/fonts/Inter-SemiBold.ttf"
@@ -65,4 +65,3 @@ class Settings:
 
 
 settings = Settings()
-
