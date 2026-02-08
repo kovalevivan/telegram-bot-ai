@@ -23,7 +23,20 @@ TEXT_SECONDARY = (94, 104, 128)
 
 
 class DailyMindPDF(FPDF, HTMLMixin):
-    pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dm_body_y: float | None = None
+        self.dm_draw_bg = None
+        self.dm_header_drawer = None
+
+    def add_page(self, *args, **kwargs):
+        super().add_page(*args, **kwargs)
+        if self.page > 1 and self.dm_header_drawer:
+            self.dm_header_drawer(plain=True)
+        if self.dm_draw_bg:
+            self.dm_draw_bg()
+        if self.dm_body_y:
+            self.set_y(self.dm_body_y)
 
 
 def _register_fonts(
@@ -142,6 +155,10 @@ def _sanitize_html(s: str) -> str:
         return ""
     # Drop script/style
     s = re.sub(r"<(script|style)[^>]*?>[\\s\\S]*?</\\1>", "", s, flags=re.I)
+    # Remove inline colors
+    s = re.sub(r'style="[^"]*color[^"]*"', "", s, flags=re.I)
+    s = re.sub(r"<font[^>]*color=[\"'][^\"']+[\"'][^>]*>", "", s, flags=re.I)
+    s = s.replace("</font>", "")
     return s
 
 
@@ -229,6 +246,18 @@ def build_daily_mind_pdf(
         pdf.set_line_width(0.2)
         pdf.rect(x=14, y=body_y, w=182, h=h, style="FD")
 
+    pdf.dm_body_y = body_y
+    pdf.dm_draw_bg = draw_background
+    pdf.dm_header_drawer = lambda plain=False: _draw_header(pdf, logo_path=None if plain else logo_path)
+    draw_background()
+
+    def draw_background():
+        h = max(40.0, pdf.h - body_y - pdf.b_margin)
+        pdf.set_fill_color(*CARD_BG)
+        pdf.set_draw_color(226, 232, 246)
+        pdf.set_line_width(0.2)
+        pdf.rect(x=14, y=body_y, w=182, h=h, style="FD")
+
     draw_background()
 
     is_html = _looks_like_html(text)
@@ -260,7 +289,7 @@ def build_daily_mind_pdf(
     render_headline = True
 
     # Estimate card height before drawing background
-    pdf.set_font(heading_family, "B", 16)
+    pdf.set_font(heading_family, "B", 18)
     headline_height = (
         _estimate_multiline_height(pdf, text=headline or title or "DailyMind", width=content_width, line_height=8)
         if render_headline
@@ -299,14 +328,10 @@ def build_daily_mind_pdf(
         if pdf.get_y() + needed <= pdf.h - pdf.b_margin:
             return
         pdf.add_page()
-        # Use plain background on continuation pages
-        _draw_header(pdf, logo_path=None)
-        draw_background()
-        pdf.set_y(body_y)
 
     pdf.set_xy(content_x, start_y)
     if render_headline:
-        pdf.set_font(heading_family, "B", 16)
+        pdf.set_font(heading_family, "B", 18)
         pdf.set_text_color(*TEXT_PRIMARY)
         ensure_space(headline_height + 4)
         pdf.multi_cell(w=0, h=8, txt=headline or title or "DailyMind", align="L")
