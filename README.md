@@ -83,7 +83,7 @@ UI защищён админ‑логином (сессия). Пароль за�
 - **UI**: `SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`
 - **LLM**: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_DEFAULT_MODEL`, `LLM_AUTH_HEADER`, `LLM_AUTH_PREFIX`
 - **DB**: `DATABASE_URL`
-- **PDF**: `PDF_LOGO_PATH`, `PDF_FONT_PATH`, `PDF_FONT_BOLD_PATH` (по умолчанию фон в `app/static/dailymind-hero.jpg`)
+- **PDF**: `PDF_LOGO_PATH`, `PDF_FONT_PATH`, `PDF_FONT_BOLD_PATH`, `PDF_BODY_FONT_PATH`, `PDF_BODY_FONT_BOLD_PATH`, `PDF_BODY_FONT_ITALIC_PATH`, `PDF_BODY_FONT_BOLD_ITALIC_PATH` (по умолчанию фон в `app/static/dailymind-hero.jpg`)
 
 ### Частая ошибка с Timeweb Agents
 

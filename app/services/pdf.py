@@ -9,6 +9,7 @@ from html import unescape
 
 from PIL import Image
 from fpdf import FPDF
+from app.settings import settings
 from fpdf.html import HTMLMixin
 
 
@@ -25,21 +26,46 @@ class DailyMindPDF(FPDF, HTMLMixin):
     pass
 
 
-def _register_fonts(pdf: FPDF, *, regular_path: str | None, bold_path: str | None) -> str:
+def _register_fonts(
+    pdf: FPDF,
+    *,
+    heading_regular: str | None,
+    heading_bold: str | None,
+    body_regular: str | None,
+    body_bold: str | None,
+    body_italic: str | None,
+    body_bold_italic: str | None,
+) -> tuple[str, str]:
     """
     Register Unicode fonts for PDF rendering.
-    Returns the font family name to use (or falls back to Helvetica if missing).
+    Returns (heading_family, body_family).
     """
-    regular = Path(regular_path) if regular_path else None
-    bold = Path(bold_path) if bold_path else None
-    if regular and regular.exists():
-        family = "DailyMind"
-        pdf.add_font(family, "", str(regular), uni=True)
-        pdf.add_font(family, "B", str(bold if bold and bold.exists() else regular), uni=True)
-        pdf.add_font(family, "I", str(regular), uni=True)
-        pdf.add_font(family, "BI", str(bold if bold and bold.exists() else regular), uni=True)
-        return family
-    return "Helvetica"
+    heading_family = "Helvetica"
+    body_family = "Helvetica"
+
+    hr = Path(heading_regular) if heading_regular else None
+    hb = Path(heading_bold) if heading_bold else None
+    if hr and hr.exists():
+        heading_family = "DailyMind"
+        pdf.add_font(heading_family, "", str(hr), uni=True)
+        pdf.add_font(heading_family, "B", str(hb if hb and hb.exists() else hr), uni=True)
+        pdf.add_font(heading_family, "I", str(hr), uni=True)
+        pdf.add_font(heading_family, "BI", str(hb if hb and hb.exists() else hr), uni=True)
+
+    br = Path(body_regular) if body_regular else None
+    bb = Path(body_bold) if body_bold else None
+    bi = Path(body_italic) if body_italic else None
+    bbi = Path(body_bold_italic) if body_bold_italic else None
+    if br and br.exists():
+        body_family = "DailyMindSerif"
+        pdf.add_font(body_family, "", str(br), uni=True)
+        pdf.add_font(body_family, "B", str(bb if bb and bb.exists() else br), uni=True)
+        pdf.add_font(body_family, "I", str(bi if bi and bi.exists() else br), uni=True)
+        pdf.add_font(body_family, "BI", str(bbi if bbi and bbi.exists() else (bb if bb and bb.exists() else br)), uni=True)
+    else:
+        body_family = heading_family
+
+    return heading_family, body_family
 
 
 def _draw_header(pdf: FPDF, *, logo_path: str | None) -> float:
@@ -158,7 +184,15 @@ def build_daily_mind_pdf(
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.set_margins(18, 18, 18)
 
-    font_family = _register_fonts(pdf, regular_path=font_path_regular, bold_path=font_path_bold)
+    heading_family, body_family = _register_fonts(
+        pdf,
+        heading_regular=font_path_regular,
+        heading_bold=font_path_bold,
+        body_regular=settings.pdf_body_font_path,
+        body_bold=settings.pdf_body_font_bold_path,
+        body_italic=settings.pdf_body_font_italic_path,
+        body_bold_italic=settings.pdf_body_font_bold_italic_path,
+    )
     pdf.add_page()
 
     header_height = _draw_header(pdf, logo_path=logo_path)
@@ -186,10 +220,14 @@ def build_daily_mind_pdf(
     render_headline = not is_html
 
     # Estimate card height before drawing background
-    pdf.set_font(font_family, "B", 16)
-    headline_height = _estimate_multiline_height(pdf, text=headline or title or "DailyMind", width=content_width, line_height=8) if render_headline else 0
+    pdf.set_font(heading_family, "B", 16)
+    headline_height = (
+        _estimate_multiline_height(pdf, text=headline or title or "DailyMind", width=content_width, line_height=8)
+        if render_headline
+        else 0
+    )
 
-    pdf.set_font(font_family, "", 11)
+    pdf.set_font(heading_family, "", 11)
     date_line = (forecast_date or "").strip() or dt.datetime.now().strftime("%d %B %Y")
     date_height = 6 if date_line else 0
 
@@ -203,7 +241,7 @@ def build_daily_mind_pdf(
     info_line = "  •  ".join(info_chunks)
     info_height = 6 if info_line else 0
 
-    pdf.set_font(font_family, "", 12)
+    pdf.set_font(body_family, "", 12)
     bullet_height = 0.0
     paragraph_height = 0.0
     html_height = 0.0
@@ -227,27 +265,27 @@ def build_daily_mind_pdf(
 
     pdf.set_xy(content_x, start_y)
     if render_headline:
-        pdf.set_font(font_family, "B", 16)
+        pdf.set_font(heading_family, "B", 16)
         pdf.set_text_color(*TEXT_PRIMARY)
         ensure_space(headline_height + 4)
         pdf.multi_cell(w=0, h=8, txt=headline or title or "DailyMind", align="L")
 
     if info_line:
         pdf.set_x(content_x)
-        pdf.set_font(font_family, "", 10)
+        pdf.set_font(heading_family, "", 10)
         pdf.set_text_color(*TEXT_PRIMARY)
         ensure_space(info_height + 2)
         pdf.multi_cell(w=content_width, h=6, txt=info_line, align="L")
         pdf.ln(2)
 
     if is_html:
-        pdf.set_font(font_family, "", 12)
+        pdf.set_font(body_family, "", 12)
         pdf.set_text_color(*TEXT_PRIMARY)
         ensure_space(html_height + 4)
         pdf.write_html(sanitized_html.replace("\n", "<br>"))
     else:
         if bullets:
-            pdf.set_font(font_family, "B", 12)
+            pdf.set_font(heading_family, "B", 12)
             pdf.set_text_color(*TEXT_PRIMARY)
             ensure_space(7 + 2)
             pdf.cell(w=0, h=7, txt="Ключевые моменты", ln=1)
@@ -260,14 +298,14 @@ def build_daily_mind_pdf(
                 pdf.set_draw_color(*ACCENT_GOLD)
                 pdf.ellipse(pdf.l_margin, y + 2, 4, 4, style="F")
                 pdf.set_xy(pdf.l_margin + 8, y)
-                pdf.set_font(font_family, "", 12)
+                pdf.set_font(body_family, "", 12)
                 pdf.set_text_color(*TEXT_PRIMARY)
                 pdf.multi_cell(w=0, h=7, txt=item, align="L")
                 pdf.ln(1)
             pdf.ln(2)
 
         if paragraphs:
-            pdf.set_font(font_family, "B", 12)
+            pdf.set_font(heading_family, "B", 12)
             pdf.set_text_color(*TEXT_PRIMARY)
             ensure_space(7 + 1)
             pdf.cell(w=0, h=7, txt="Расшифровка", ln=1)
@@ -275,18 +313,18 @@ def build_daily_mind_pdf(
             for block in paragraphs:
                 block_height = _estimate_multiline_height(pdf, text=block, width=content_width, line_height=7) + 2
                 ensure_space(block_height)
-                pdf.set_font(font_family, "", 12)
+                pdf.set_font(body_family, "", 12)
                 pdf.set_text_color(*TEXT_PRIMARY)
                 pdf.multi_cell(w=0, h=7, txt=block, align="J")
                 pdf.ln(2)
 
     pdf.ln(2)
     ensure_space(6 if date_line else 0)
-    pdf.set_font(font_family, "", 10)
+    pdf.set_font(heading_family, "", 10)
     pdf.set_text_color(*TEXT_SECONDARY)
     if date_line:
         pdf.ln(2)
-        pdf.set_font(font_family, "", 10)
+        pdf.set_font(heading_family, "", 10)
         pdf.set_text_color(*TEXT_SECONDARY)
         pdf.cell(w=0, h=6, txt=date_line, ln=1, align="R")
 
