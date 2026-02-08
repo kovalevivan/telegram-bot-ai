@@ -65,7 +65,7 @@ class Settings:
         _env("PDF_BODY_FONT_BOLD_ITALIC_PATH", "app/static/fonts/Georgia-BoldItalic.ttf")
         or "app/static/fonts/Georgia-BoldItalic.ttf"
     )
-    pdf_emoji_font_path: str | None = _env("PDF_EMOJI_FONT_PATH", "app/static/fonts/OpenSansEmoji.ttf") or "app/static/fonts/OpenSansEmoji.ttf"
+    pdf_emoji_font_path: str | None = _env("PDF_EMOJI_FONT_PATH", None)
 
     # Debug logging (incoming requests)
     log_incoming_puzzlebot: bool = (_env("LOG_INCOMING_PUZZLEBOT", "1") or "1") == "1"
